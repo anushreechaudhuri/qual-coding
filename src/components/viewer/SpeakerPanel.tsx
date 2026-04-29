@@ -225,15 +225,25 @@ export function SpeakerPanel({
             {bulkFrom && (
               <>
                 <span className="text-xs text-stone-400">&rarr;</span>
-                <input
-                  value={bulkTo}
-                  onChange={(e) => setBulkTo(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleBulkRename();
-                  }}
-                  placeholder="New name"
-                  className="rounded border border-stone-200 px-2 py-1 text-xs focus:outline-none flex-1 min-w-[120px]"
-                />
+                <div className="relative flex-1 min-w-[120px]">
+                  <input
+                    value={bulkTo}
+                    onChange={(e) => setBulkTo(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleBulkRename();
+                    }}
+                    placeholder="New name or pick existing"
+                    list="speaker-suggestions"
+                    className="rounded border border-stone-200 px-2 py-1 text-xs focus:outline-none w-full"
+                  />
+                  <datalist id="speaker-suggestions">
+                    {speakers
+                      .filter((s) => s.name !== bulkFrom)
+                      .map((s) => (
+                        <option key={s.id} value={s.name} />
+                      ))}
+                  </datalist>
+                </div>
                 <button
                   onClick={handleBulkRename}
                   disabled={!bulkTo.trim() || bulkTo.trim() === bulkFrom}
