@@ -91,12 +91,12 @@ export async function POST(req: NextRequest) {
       language,
     });
 
-    // Use raw fetch with a 5-minute timeout (AbortController)
+    // 10-minute timeout for long audio transcriptions
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 280_000);
+    const timeout = setTimeout(() => controller.abort(), 600_000);
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
