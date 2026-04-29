@@ -16,9 +16,12 @@ import { useUiStore } from "@/lib/stores/uiStore";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
 import { useProcessingQueue } from "@/hooks/useProcessingQueue";
+import { useSync } from "@/hooks/useSync";
+import { SyncIndicator } from "@/components/sync/SyncIndicator";
 
 export default function ProjectsPage() {
   useProcessingQueue();
+  useSync();
   const [showCreate, setShowCreate] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const currentProjectId = useUiStore((s) => s.currentProjectId);
@@ -128,6 +131,7 @@ function Header({
         >
           Sign out
         </button>
+        <SyncIndicator />
       </div>
     </div>
   );
