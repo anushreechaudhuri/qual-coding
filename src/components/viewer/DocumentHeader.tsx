@@ -1,12 +1,21 @@
 "use client";
 
-import type { Document } from "@/types";
+import { useState, useMemo } from "react";
+import { updateDocument } from "@/lib/db/operations";
+import type { Document, AudioSegment } from "@/types";
 
 /**
  * Header bar showing document metadata: title, date, language badge,
  * purpose badge, and audio-specific info (speaker count, duration).
+ * For audio documents, shows a speaker list with inline rename.
  */
 export function DocumentHeader({ document: doc }: { document: Document }) {
+  const isAudio = doc.fileType.startsWith("audio/");
+  const speakers = useMemo(
+    () => [...new Set(doc.segments.map((s) => s.speaker))],
+    [doc.segments]
+  );
+
   return (
     <div className="border-b border-stone-100 px-6 py-3">
       <h2 className="text-lg font-semibold text-stone-900 font-serif">
@@ -30,6 +39,93 @@ export function DocumentHeader({ document: doc }: { document: Document }) {
         )}
         <PurposeBadge purpose={doc.purpose} />
       </div>
+
+      {isAudio && speakers.length > 0 && (
+        <SpeakerList document={doc} speakers={speakers} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Inline speaker rename: click a speaker label to rename it across
+ * all segments in the document.
+ */
+function SpeakerList({
+  document: doc,
+  speakers,
+}: {
+  document: Document;
+  speakers: string[];
+}) {
+  const [renamingIndex, setRenamingIndex] = useState<number | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+
+  async function handleRename(oldName: string) {
+    const newName = renameValue.trim();
+    if (!newName || newName === oldName) {
+      setRenamingIndex(null);
+      return;
+    }
+
+    // Replace speaker name in all segments
+    const updatedSegments: AudioSegment[] = doc.segments.map((seg) =>
+      seg.speaker === oldName ? { ...seg, speaker: newName } : seg
+    );
+
+    // Rebuild content and translation with new speaker names
+    const content = updatedSegments
+      .map((seg) => `${seg.speaker} · ${seg.timestamp}\n${seg.content}`)
+      .join("\n\n");
+
+    const translationContent =
+      updatedSegments
+        .filter((seg) => seg.translation && seg.translation !== seg.content)
+        .map((seg) => `${seg.speaker} · ${seg.timestamp}\n${seg.translation}`)
+        .join("\n\n") || null;
+
+    await updateDocument(doc.id, {
+      segments: updatedSegments,
+      content,
+      translationContent,
+    });
+
+    setRenamingIndex(null);
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+      <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
+        Speakers:
+      </span>
+      {speakers.map((speaker, i) =>
+        renamingIndex === i ? (
+          <input
+            key={i}
+            autoFocus
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={() => handleRename(speaker)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleRename(speaker);
+              if (e.key === "Escape") setRenamingIndex(null);
+            }}
+            className="rounded border border-stone-300 px-1.5 py-0.5 text-xs focus:outline-none w-28"
+          />
+        ) : (
+          <button
+            key={i}
+            onClick={() => {
+              setRenamingIndex(i);
+              setRenameValue(speaker);
+            }}
+            className="rounded bg-stone-100 px-2 py-0.5 text-xs text-stone-600 hover:bg-stone-200"
+            title="Click to rename"
+          >
+            {speaker}
+          </button>
+        )
+      )}
     </div>
   );
 }

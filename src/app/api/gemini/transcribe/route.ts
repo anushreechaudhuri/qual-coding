@@ -16,17 +16,15 @@ import type { ApiErrorResponse } from "@/types/api";
 
 export const maxDuration = 300;
 
-const TRANSCRIPTION_PROMPT = `You are a transcription assistant. Transcribe the provided audio with the following requirements:
+const TRANSCRIPTION_PROMPT = `You are a transcription assistant for qualitative research interviews and focus group discussions. Transcribe the provided audio with the following requirements:
 
-1. Identify and label each speaker (Speaker 1, Speaker 2, etc.)
-2. Include timestamps in MM:SS format for each speaker turn
-3. Transcribe in the original language exactly as spoken
-4. Provide an English translation for each segment (if the segment is already in English, repeat it as the translation)
-5. Detect the language of each segment
+1. Identify each distinct speaker. Try to label them by their apparent role when contextual cues allow (e.g., "Interviewer", "Farmer 1", "Farmer 2", "Translator", "Village Elder", "Respondent 1"). If no role is apparent, use "Speaker 1", "Speaker 2", etc. Be consistent: the same voice should always get the same label throughout.
+2. Include timestamps in MM:SS format for each speaker turn.
+3. Transcribe in the original language exactly as spoken. Preserve code-switching (e.g., mixing Bangla and English in the same sentence).
+4. Provide an English translation for each segment. If the segment is already in English, repeat it as the translation.
+5. Detect the language of each segment (e.g., "bn" for Bangla, "en" for English, "hi" for Hindi, "id" for Indonesian).
 
-Return the transcription as a JSON object with a "segments" array. Each segment should have: speaker, timestamp, content (original language), language (ISO code or name), and translation (English).
-
-Be thorough and accurate. Preserve the original language text exactly as spoken, including any code-switching between languages.`;
+Be thorough and accurate. These are research recordings where exact wording matters for qualitative analysis.`;
 
 const RESPONSE_SCHEMA: Schema = {
   type: SchemaType.OBJECT,
