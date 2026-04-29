@@ -16,6 +16,21 @@ const sourceSerif = Source_Serif_4({
 export const metadata: Metadata = {
   title: "Qual Coding",
   description: "Open-source qualitative coding tool for multilingual fieldwork",
+  icons: {
+    icon: "/icon.svg",
+  },
+  openGraph: {
+    title: "Qual Coding",
+    description: "Open-source qualitative coding for multilingual fieldwork. Upload interviews, field notes, and documents. Code, memo, and export your analysis. Works offline.",
+    images: [{ url: "/og.svg", width: 1200, height: 630 }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Qual Coding",
+    description: "Open-source qualitative coding for multilingual fieldwork",
+    images: ["/og.svg"],
+  },
 };
 
 export default function RootLayout({
