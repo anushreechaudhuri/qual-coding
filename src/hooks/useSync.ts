@@ -4,30 +4,35 @@ import { useEffect, useRef } from "react";
 import { useSession } from "next-auth/react";
 import { startSyncLoop, stopSyncLoop, runSync, getSyncState } from "@/lib/sync/syncEngine";
 
-/**
- * Starts the Drive sync loop when authenticated. On first attempt,
- * if Drive returns 403 (no scope), disables sync silently instead
- * of showing "Sign in needed" forever.
- */
 export function useSync() {
   const { data: session } = useSession();
   const disabledRef = useRef(false);
 
   useEffect(() => {
-    if (!session?.accessToken || disabledRef.current) return;
+    const token = session?.accessToken;
+    console.log("[sync] Session check:", {
+      hasSession: !!session,
+      hasToken: !!token,
+      tokenPreview: token ? token.slice(0, 20) + "..." : "none",
+      disabled: disabledRef.current,
+      error: session?.error,
+    });
 
-    // Test Drive access before starting the loop
+    if (!token || disabledRef.current) return;
+
     async function testAndStart() {
-      await runSync(session!.accessToken);
+      console.log("[sync] Testing Drive access...");
+      await runSync(token!);
       const state = getSyncState();
+      console.log("[sync] Test result:", state.status, state.error);
 
       if (state.status === "auth_required") {
-        // Drive scope not available (e.g., Vercel without ENABLE_DRIVE_SYNC)
-        // Disable sync silently
+        console.log("[sync] Drive scope not available, disabling sync");
         disabledRef.current = true;
         return;
       }
 
+      console.log("[sync] Starting sync loop");
       startSyncLoop(() => session!.accessToken ?? null);
     }
 
