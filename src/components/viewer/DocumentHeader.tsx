@@ -14,18 +14,76 @@ import type { Document, AudioSegment } from "@/types";
 export function DocumentHeader({ document: doc }: { document: Document }) {
   const isAudio = doc.fileType.startsWith("audio/");
   const [showMemo, setShowMemo] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(doc.title);
+  const [autoRenaming, setAutoRenaming] = useState(false);
   const speakers = useMemo(
     () => [...new Set(doc.segments.map((s) => s.speaker))],
     [doc.segments]
   );
 
+  async function handleRename() {
+    const trimmed = renameValue.trim();
+    if (trimmed && trimmed !== doc.title) {
+      await updateDocument(doc.id, { title: trimmed });
+    }
+    setRenaming(false);
+  }
+
+  async function handleAutoRename() {
+    if (!doc.content || autoRenaming) return;
+    setAutoRenaming(true);
+    try {
+      const res = await fetch("/api/gemini/rename", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Gemini-Key": localStorage.getItem("qual-coding:api-key:gemini") ?? "",
+        },
+        body: JSON.stringify({
+          content: doc.content.slice(0, 2000),
+          currentTitle: doc.title,
+          purpose: doc.purpose,
+          language: doc.language,
+        }),
+      });
+      if (res.ok) {
+        const { title } = await res.json();
+        if (title) await updateDocument(doc.id, { title });
+      }
+    } finally {
+      setAutoRenaming(false);
+    }
+  }
+
   return (
     <div className="border-b border-stone-100 px-6 py-3">
       <div className="flex items-start justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-stone-900 font-serif">
-            {doc.title}
-          </h2>
+        <div className="flex-1 min-w-0">
+          {renaming ? (
+            <input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onBlur={handleRename}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") handleRename();
+                if (e.key === "Escape") setRenaming(false);
+              }}
+              className="w-full rounded border border-stone-300 px-2 py-1 text-lg font-semibold font-serif focus:outline-none"
+            />
+          ) : (
+            <h2
+              className="text-lg font-semibold text-stone-900 font-serif cursor-pointer hover:bg-stone-50 rounded px-1 -mx-1"
+              onClick={() => {
+                setRenameValue(doc.title);
+                setRenaming(true);
+              }}
+              title="Click to rename"
+            >
+              {doc.title}
+            </h2>
+          )}
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-500">
             {doc.dateCollected && <span>{doc.dateCollected}</span>}
             <span>&middot;</span>
@@ -45,12 +103,22 @@ export function DocumentHeader({ document: doc }: { document: Document }) {
             <PurposeBadge purpose={doc.purpose} />
           </div>
         </div>
-        <button
-          onClick={() => setShowMemo(!showMemo)}
-          className="shrink-0 rounded px-2 py-1 text-xs text-stone-400 hover:text-stone-600 hover:bg-stone-50"
-        >
+        <div className="flex shrink-0 gap-1">
+          <button
+            onClick={handleAutoRename}
+            disabled={autoRenaming || !doc.content}
+            className="rounded px-2 py-1 text-xs text-stone-400 hover:text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+            title="AI rename based on content"
+          >
+            {autoRenaming ? "..." : "AI rename"}
+          </button>
+          <button
+            onClick={() => setShowMemo(!showMemo)}
+            className="rounded px-2 py-1 text-xs text-stone-400 hover:text-stone-600 hover:bg-stone-50"
+          >
           Memo
         </button>
+        </div>
       </div>
 
       {isAudio && speakers.length > 0 && (

@@ -31,9 +31,10 @@ export function MemoList({
           key={memo.id}
           className="rounded border border-stone-100 bg-stone-50 p-3"
         >
-          <p className="text-sm font-serif text-stone-700 whitespace-pre-wrap">
-            {memo.content}
-          </p>
+          <div
+            className="text-sm font-serif text-stone-700 prose prose-sm prose-stone max-w-none"
+            dangerouslySetInnerHTML={{ __html: memo.content }}
+          />
           <div className="mt-2 flex items-center justify-between text-[10px] text-stone-400">
             <span>{memo.updatedAt.toLocaleDateString()}</span>
             <button

@@ -25,3 +25,22 @@ body {
 [data-content-container] ::-moz-selection {
   background-color: #fde68a;
 }
+
+/* Tiptap mention chips */
+.mention {
+  background-color: #e7e5e4;
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-size: 0.875em;
+  font-weight: 500;
+  color: #44403c;
+}
+
+/* Tiptap placeholder */
+.tiptap p.is-editor-empty:first-child::before {
+  color: #a8a29e;
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
