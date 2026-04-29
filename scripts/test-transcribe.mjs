@@ -110,7 +110,7 @@ const transcribeStart = Date.now();
 const prompt = `Transcribe this audio. For each speaker turn, provide: speaker label, timestamp (MM:SS), original language content, language code, and English translation. Return JSON with a "segments" array.`;
 
 const transcribeRes = await fetch(
-  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+  `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
   {
     method: "POST",
     headers: { "Content-Type": "application/json" },
