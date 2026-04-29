@@ -10,6 +10,8 @@ import { UploadModal } from "@/components/upload/UploadModal";
 import { DocumentList } from "@/components/layout/DocumentList";
 import { DocumentViewer } from "@/components/viewer/DocumentViewer";
 import { CodebookPanel } from "@/components/codebook/CodebookPanel";
+import { ExportMenu } from "@/components/export/ExportMenu";
+import { ProjectSummaryPanel } from "@/components/summary/ProjectSummary";
 import { useUiStore } from "@/lib/stores/uiStore";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
@@ -38,6 +40,7 @@ export default function ProjectsPage() {
         header={
           <Header
             projectName={currentProject?.name ?? null}
+            projectId={currentProjectId}
             onCreateClick={() => setShowCreate(true)}
           />
         }
@@ -70,7 +73,10 @@ export default function ProjectsPage() {
         }
         right={
           currentProjectId ? (
-            <CodebookPanel projectId={currentProjectId} />
+            <div className="flex flex-col h-full">
+              <CodebookPanel projectId={currentProjectId} />
+              <ProjectSummaryPanel />
+            </div>
           ) : (
             <div />
           )
@@ -92,9 +98,11 @@ export default function ProjectsPage() {
 
 function Header({
   projectName,
+  projectId,
   onCreateClick,
 }: {
   projectName: string | null;
+  projectId: string | null;
   onCreateClick: () => void;
 }) {
   return (
@@ -108,6 +116,9 @@ function Header({
         <button onClick={onCreateClick} className="hover:text-stone-700">
           New project
         </button>
+        {projectId && projectName && (
+          <ExportMenu projectId={projectId} projectName={projectName} />
+        )}
         <Link href="/settings" className="hover:text-stone-700">
           Settings
         </Link>
