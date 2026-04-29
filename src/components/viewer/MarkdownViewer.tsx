@@ -13,6 +13,7 @@ const ContentEditor = dynamic(
 import { adjustCodingOffsets } from "@/lib/coding/offsetAdjuster";
 import { useUndoStore } from "@/lib/stores/undoStore";
 import { TextAnnotator } from "@/components/editor/TextAnnotator";
+import { CopyDropdown } from "./CopyDropdown";
 
 /**
  * Three modes:
@@ -25,7 +26,6 @@ export function MarkdownViewer({ document: doc }: { document: Document }) {
   const [mode, setMode] = useState<"read" | "code">("read");
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(doc.content);
-  const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
 
@@ -36,11 +36,7 @@ export function MarkdownViewer({ document: doc }: { document: Document }) {
     if (!editing) setEditContent(doc.content);
   }, [doc.content, editing]);
 
-  async function handleCopy() {
-    await navigator.clipboard.writeText(doc.content);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  }
+  // Copy handled by CopyDropdown component
 
   async function handleSaveEdit() {
     if (editContent === doc.content) {
@@ -197,12 +193,7 @@ export function MarkdownViewer({ document: doc }: { document: Document }) {
           {saveResult && (
             <span className="text-[10px] text-green-600">{saveResult}</span>
           )}
-          <button
-            onClick={handleCopy}
-            className="rounded px-2.5 py-1 text-xs text-stone-400 hover:text-stone-600 hover:bg-stone-50"
-          >
-            {copied ? "Copied" : "Copy all"}
-          </button>
+          <CopyDropdown document={doc} />
         </div>
       </div>
 
