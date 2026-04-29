@@ -1,15 +1,9 @@
 "use client";
 
 import { useMemo } from "react";
-import { splitTextByCodings, type TextSegment } from "@/lib/coding/offsetUtils";
+import { splitTextByCodings } from "@/lib/coding/offsetUtils";
 import type { Coding, Code } from "@/types";
 
-/**
- * Renders text content with colored highlight overlays for codings
- * and a yellow highlight for the pending (not-yet-applied) selection.
- *
- * Preserves the stored content string byte-for-byte (character offset invariant).
- */
 export function HighlightLayer({
   text,
   codings,
@@ -31,93 +25,80 @@ export function HighlightLayer({
   return (
     <span>
       {segments.map((segment, i) => {
-        // Check if this segment overlaps with the pending selection
-        const isPending =
-          pendingSelection &&
-          segment.startOffset < pendingSelection.endOffset &&
-          segment.endOffset > pendingSelection.startOffset;
+        const hasCoding = segment.codingIds.length > 0;
 
-        if (segment.codingIds.length === 0 && !isPending) {
+        // Get coding color if applicable
+        let codingColor: string | null = null;
+        let codingName: string | undefined;
+        let primaryCodingId: string | null = null;
+        if (hasCoding) {
+          primaryCodingId = segment.codingIds[0];
+          const primaryCoding = codings.find((c) => c.id === primaryCodingId);
+          const primaryCode = primaryCoding ? codeMap.get(primaryCoding.codeId) : null;
+          codingColor = primaryCode?.color ?? "#78716c";
+          codingName = segment.codingIds.length > 1
+            ? `${segment.codingIds.length} codes applied`
+            : primaryCode?.name;
+        }
+
+        // Does pending selection overlap this segment?
+        const pendStart = pendingSelection?.startOffset ?? 0;
+        const pendEnd = pendingSelection?.endOffset ?? 0;
+        const hasPending =
+          pendingSelection &&
+          pendStart < segment.endOffset &&
+          pendEnd > segment.startOffset;
+
+        // No highlight at all
+        if (!hasCoding && !hasPending) {
           return <span key={i}>{segment.text}</span>;
         }
 
-        if (segment.codingIds.length === 0 && isPending) {
-          // Pending selection only (no existing coding)
+        // Only coding highlight, no pending
+        if (hasCoding && !hasPending) {
           return (
             <span
               key={i}
-              className="rounded-sm"
-              style={{ backgroundColor: "#fde68a" }}
+              onClick={(e) => primaryCodingId && onCodingClick(primaryCodingId, e)}
+              className="cursor-pointer rounded-sm"
+              style={{
+                backgroundColor: `${codingColor}30`,
+                borderBottom: `2px solid ${codingColor}`,
+              }}
+              title={codingName}
             >
-              {renderPendingOverlap(segment, pendingSelection!)}
+              {segment.text}
             </span>
           );
         }
 
-        // Existing coding highlight
-        const primaryCodingId = segment.codingIds[0];
-        const primaryCoding = codings.find((c) => c.id === primaryCodingId);
-        const primaryCode = primaryCoding
-          ? codeMap.get(primaryCoding.codeId)
-          : null;
-        const color = primaryCode?.color ?? "#78716c";
+        // Has pending selection: render with precise overlap highlighting
+        const relStart = Math.max(0, pendStart - segment.startOffset);
+        const relEnd = Math.min(segment.text.length, pendEnd - segment.startOffset);
+
+        const before = segment.text.slice(0, relStart);
+        const highlighted = segment.text.slice(relStart, relEnd);
+        const after = segment.text.slice(relEnd);
+
+        const baseStyle = hasCoding
+          ? { backgroundColor: `${codingColor}30`, borderBottom: `2px solid ${codingColor}` }
+          : {};
+
+        const pendingStyle = { backgroundColor: "#fde68a" };
 
         return (
           <span
             key={i}
-            onClick={(e) => onCodingClick(primaryCodingId, e)}
-            className="cursor-pointer rounded-sm"
-            style={{
-              backgroundColor: isPending ? "#fde68a" : `${color}30`,
-              borderBottom: `2px solid ${color}`,
-            }}
-            title={
-              segment.codingIds.length > 1
-                ? `${segment.codingIds.length} codes applied`
-                : primaryCode?.name
-            }
+            className={hasCoding ? "cursor-pointer rounded-sm" : ""}
+            onClick={hasCoding ? (e) => primaryCodingId && onCodingClick(primaryCodingId, e) : undefined}
+            title={codingName}
           >
-            {segment.text}
+            {before && <span style={baseStyle}>{before}</span>}
+            <span style={{ ...baseStyle, ...pendingStyle }}>{highlighted}</span>
+            {after && <span style={baseStyle}>{after}</span>}
           </span>
         );
       })}
     </span>
-  );
-}
-
-/**
- * For a segment that partially overlaps the pending selection,
- * split into highlighted and non-highlighted parts.
- */
-function renderPendingOverlap(
-  segment: TextSegment,
-  pending: { startOffset: number; endOffset: number }
-) {
-  const relStart = Math.max(0, pending.startOffset - segment.startOffset);
-  const relEnd = Math.min(
-    segment.text.length,
-    pending.endOffset - segment.startOffset
-  );
-
-  if (relStart === 0 && relEnd === segment.text.length) {
-    return segment.text;
-  }
-
-  return (
-    <>
-      {relStart > 0 && (
-        <span style={{ backgroundColor: "transparent" }}>
-          {segment.text.slice(0, relStart)}
-        </span>
-      )}
-      <span style={{ backgroundColor: "#fde68a" }}>
-        {segment.text.slice(relStart, relEnd)}
-      </span>
-      {relEnd < segment.text.length && (
-        <span style={{ backgroundColor: "transparent" }}>
-          {segment.text.slice(relEnd)}
-        </span>
-      )}
-    </>
   );
 }

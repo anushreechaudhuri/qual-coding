@@ -3,11 +3,6 @@
 import { useState, useMemo, useCallback } from "react";
 import type { Code } from "@/types";
 
-/**
- * Multi-select code picker with checkboxes. Shows hierarchical structure.
- * Selecting a child auto-selects its parent. Apply button commits all
- * selected codes at once.
- */
 export function CodePicker({
   codes,
   recentCodeIds,
@@ -23,6 +18,7 @@ export function CodePicker({
 }) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [focusIndex, setFocusIndex] = useState(0);
 
   const toggleCode = useCallback(
     (codeId: string) => {
@@ -32,11 +28,8 @@ export function CodePicker({
           next.delete(codeId);
         } else {
           next.add(codeId);
-          // Auto-select parent when child is selected
           const code = codes.find((c) => c.id === codeId);
-          if (code?.parentId) {
-            next.add(code.parentId);
-          }
+          if (code?.parentId) next.add(code.parentId);
         }
         return next;
       });
@@ -70,17 +63,11 @@ export function CodePicker({
 
     const result: { code: Code; depth: number }[] = [];
 
-    // Recent codes first
     const recentCodes = recentCodeIds
       .map((id) => matching.find((c) => c.id === id))
       .filter(Boolean) as Code[];
-    if (recentCodes.length > 0 && !search) {
-      for (const c of recentCodes) {
-        result.push({ code: c, depth: 0 });
-      }
-      if (parents.length > recentCodes.length) {
-        result.push({ code: { id: "__sep__", name: "—", parentId: null } as Code, depth: -1 });
-      }
+    for (const c of recentCodes) {
+      result.push({ code: c, depth: 0 });
     }
 
     for (const parent of parents) {
@@ -95,18 +82,61 @@ export function CodePicker({
     return result;
   }, [codes, search, recentCodeIds]);
 
+  // Reset focus when search changes
+  useMemo(() => setFocusIndex(0), [search]);
+
   function handleApply() {
     if (selected.size > 0) {
       onSelect(Array.from(selected));
     }
   }
 
-  // Quick apply: single click without checkbox for speed
   function handleQuickApply(codeId: string) {
     const code = codes.find((c) => c.id === codeId);
     const ids = [codeId];
     if (code?.parentId) ids.push(code.parentId);
     onSelect(ids);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Escape") {
+      onClose();
+      return;
+    }
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setFocusIndex((i) => Math.min(i + 1, orderedCodes.length - 1));
+      return;
+    }
+
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setFocusIndex((i) => Math.max(i - 1, 0));
+      return;
+    }
+
+    // Enter: toggle focused code's checkbox
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      const focused = orderedCodes[focusIndex];
+      if (focused) {
+        toggleCode(focused.code.id);
+      }
+      return;
+    }
+
+    // Shift+Enter: apply selected codes (or quick-apply focused)
+    if (e.key === "Enter" && e.shiftKey) {
+      e.preventDefault();
+      if (selected.size > 0) {
+        handleApply();
+      } else {
+        const focused = orderedCodes[focusIndex];
+        if (focused) handleQuickApply(focused.code.id);
+      }
+      return;
+    }
   }
 
   return (
@@ -122,41 +152,35 @@ export function CodePicker({
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search codes..."
           className="w-full border-b border-stone-100 px-3 py-1.5 text-xs focus:outline-none"
-          onKeyDown={(e) => {
-            if (e.key === "Escape") onClose();
-            if (e.key === "Enter") {
-              if (selected.size > 0) {
-                handleApply();
-              } else if (orderedCodes.length > 0 && orderedCodes[0].code.id !== "__sep__") {
-                handleQuickApply(orderedCodes[0].code.id);
-              }
-            }
-          }}
+          onKeyDown={handleKeyDown}
         />
         <div className="max-h-48 overflow-y-auto py-0.5">
           {orderedCodes.length === 0 ? (
             <p className="px-3 py-2 text-xs text-stone-400">No matching codes</p>
           ) : (
-            orderedCodes.map(({ code, depth }) => {
-              if (code.id === "__sep__") {
-                return <div key="sep" className="border-t border-stone-100 my-0.5" />;
-              }
+            orderedCodes.map(({ code, depth }, i) => {
               const isSelected = selected.has(code.id);
+              const isFocused = i === focusIndex;
               return (
                 <div
                   key={code.id}
-                  className="flex items-center gap-1 py-0.5 hover:bg-stone-50"
+                  className={`flex items-center gap-1 py-0.5 ${
+                    isFocused ? "bg-stone-100" : "hover:bg-stone-50"
+                  }`}
                   style={{ paddingLeft: `${depth * 12 + 6}px`, paddingRight: "6px" }}
+                  onMouseEnter={() => setFocusIndex(i)}
                 >
                   <input
                     type="checkbox"
                     checked={isSelected}
                     onChange={() => toggleCode(code.id)}
                     className="h-3 w-3 rounded border-stone-300 shrink-0"
+                    tabIndex={-1}
                   />
                   <button
                     onClick={() => handleQuickApply(code.id)}
                     className="flex flex-1 items-center gap-1.5 text-left min-w-0"
+                    tabIndex={-1}
                   >
                     <span
                       className="h-2 w-2 shrink-0 rounded-sm"
@@ -170,17 +194,23 @@ export function CodePicker({
           )}
         </div>
 
-        {/* Apply button for multi-select */}
-        {selected.size > 1 && (
+        {/* Apply button: always shown when any codes are checked */}
+        {selected.size > 0 && (
           <div className="border-t border-stone-100 px-2 py-1.5">
             <button
               onClick={handleApply}
               className="w-full rounded bg-stone-900 px-2 py-1 text-[10px] font-medium text-white hover:bg-stone-800"
             >
-              Apply {selected.size} codes
+              Apply {selected.size} {selected.size === 1 ? "code" : "codes"}
+              <span className="ml-1 text-stone-400">(Shift+Enter)</span>
             </button>
           </div>
         )}
+
+        {/* Hint */}
+        <div className="border-t border-stone-100 px-2 py-1 text-[9px] text-stone-400">
+          Click to quick-apply &middot; Check to multi-select &middot; ↑↓ navigate &middot; Enter toggle &middot; Shift+Enter apply
+        </div>
       </div>
     </>
   );
