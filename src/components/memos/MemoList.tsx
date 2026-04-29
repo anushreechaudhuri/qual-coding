@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
 import { deleteMemo } from "@/lib/db/operations";
-import type { MemoTargetType } from "@/types";
+import { MemoEditor } from "./MemoEditor";
+import type { Memo, MemoTargetType } from "@/types";
 
 export function MemoList({
   targetType,
@@ -30,8 +31,7 @@ export function MemoList({
       {memos.map((memo) => (
         <MemoCard
           key={memo.id}
-          content={memo.content}
-          date={memo.updatedAt}
+          memo={memo}
           onDelete={() => deleteMemo(memo.id)}
         />
       ))}
@@ -40,15 +40,16 @@ export function MemoList({
 }
 
 function MemoCard({
-  content,
-  date,
+  memo,
   onDelete,
 }: {
-  content: string;
-  date: Date;
+  memo: Memo;
   onDelete: () => void;
 }) {
   const [copied, setCopied] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const content = memo.content;
+  const date = memo.updatedAt instanceof Date ? memo.updatedAt : new Date(memo.updatedAt);
 
   function stripHtml(html: string): string {
     const div = document.createElement("div");
@@ -90,11 +91,27 @@ function MemoCard({
     }
   }
 
+  if (editing) {
+    return (
+      <div className="rounded border border-stone-200 bg-white p-3">
+        <MemoEditor
+          projectId={memo.projectId}
+          targetType={memo.targetType}
+          targetId={memo.targetId}
+          existingMemo={memo}
+          onClose={() => setEditing(false)}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="rounded border border-stone-100 bg-stone-50 p-3">
       <div
-        className="text-sm font-serif text-stone-700 prose prose-sm prose-stone max-w-none"
+        className="text-sm font-serif text-stone-700 prose prose-sm prose-stone max-w-none cursor-pointer hover:bg-stone-100 rounded p-1 -m-1"
         dangerouslySetInnerHTML={{ __html: content }}
+        onClick={() => setEditing(true)}
+        title="Click to edit"
       />
       <div className="mt-2 flex items-center justify-between text-[10px] text-stone-400">
         <span>{date.toLocaleDateString()}</span>
@@ -109,6 +126,7 @@ function MemoCard({
             </>
           )}
           <span className="text-stone-200">|</span>
+          <button onClick={() => setEditing(true)} className="hover:text-stone-600">edit</button>
           <button onClick={onDelete} className="hover:text-red-500">delete</button>
         </div>
       </div>
