@@ -6,8 +6,8 @@ import { useUiStore } from "@/lib/stores/uiStore";
  * Three-panel layout matching the mockup: document list (left),
  * document viewer (center), codebook + summary (right).
  *
- * Uses CSS Grid with collapsible side panels. The center panel
- * takes all remaining space.
+ * Side panels are collapsible via toggle buttons at the panel edges.
+ * The center panel takes all remaining space.
  */
 export function AppShell({
   left,
@@ -22,6 +22,8 @@ export function AppShell({
 }) {
   const leftVisible = useUiStore((s) => s.leftPanelVisible);
   const rightVisible = useUiStore((s) => s.rightPanelVisible);
+  const toggleLeft = useUiStore((s) => s.toggleLeftPanel);
+  const toggleRight = useUiStore((s) => s.toggleRightPanel);
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
@@ -39,8 +41,26 @@ export function AppShell({
           </aside>
         )}
 
+        {/* Left toggle */}
+        <button
+          onClick={toggleLeft}
+          className="flex h-full w-4 shrink-0 items-center justify-center text-stone-300 hover:text-stone-500 hover:bg-stone-50"
+          title={leftVisible ? "Hide sidebar" : "Show sidebar"}
+        >
+          <span className="text-[10px]">{leftVisible ? "◂" : "▸"}</span>
+        </button>
+
         {/* Center panel: document viewer */}
         <main className="flex-1 overflow-y-auto bg-white">{center}</main>
+
+        {/* Right toggle */}
+        <button
+          onClick={toggleRight}
+          className="flex h-full w-4 shrink-0 items-center justify-center text-stone-300 hover:text-stone-500 hover:bg-stone-50"
+          title={rightVisible ? "Hide codebook" : "Show codebook"}
+        >
+          <span className="text-[10px]">{rightVisible ? "▸" : "◂"}</span>
+        </button>
 
         {/* Right panel: codebook + summary */}
         {rightVisible && (
