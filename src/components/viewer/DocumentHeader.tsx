@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { updateDocument } from "@/lib/db/operations";
 import { MemoEditor } from "@/components/memos/MemoEditor";
 import { MemoList } from "@/components/memos/MemoList";
+import { SpeakerPanel } from "./SpeakerPanel";
 import type { Document, AudioSegment } from "@/types";
 
 /**
@@ -16,6 +17,7 @@ export function DocumentHeader({ document: doc }: { document: Document }) {
   const [showMemo, setShowMemo] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState(doc.title);
+  const [showSpeakerPanel, setShowSpeakerPanel] = useState(false);
   const [autoRenaming, setAutoRenaming] = useState(false);
   const speakers = useMemo(
     () => [...new Set(doc.segments.map((s) => s.speaker))],
@@ -122,7 +124,22 @@ export function DocumentHeader({ document: doc }: { document: Document }) {
       </div>
 
       {isAudio && speakers.length > 0 && (
-        <SpeakerList document={doc} speakers={speakers} />
+        <div className="flex items-center gap-2 mt-2">
+          <SpeakerList document={doc} speakers={speakers} />
+          <button
+            onClick={() => setShowSpeakerPanel(!showSpeakerPanel)}
+            className="ml-1 text-[10px] text-stone-400 hover:text-stone-600 underline underline-offset-2"
+          >
+            {showSpeakerPanel ? "Hide" : "Manage speakers"}
+          </button>
+        </div>
+      )}
+
+      {isAudio && showSpeakerPanel && (
+        <SpeakerPanel
+          document={doc}
+          onClose={() => setShowSpeakerPanel(false)}
+        />
       )}
 
       {showMemo && (
@@ -187,7 +204,7 @@ function SpeakerList({
   }
 
   return (
-    <div className="mt-2 flex flex-wrap items-center gap-1.5">
+    <div className="flex flex-wrap items-center gap-1.5">
       <span className="text-[10px] uppercase tracking-wider text-stone-400 mr-1">
         Speakers:
       </span>

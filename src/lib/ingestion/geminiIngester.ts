@@ -15,6 +15,153 @@ import { isApiError } from "@/types/api";
 import type { AudioSegment } from "@/types";
 
 const CHUNK_MINUTES = 5;
+const DIRECT_UPLOAD_THRESHOLD_MB = 20;
+
+/**
+ * Upload a file directly from the browser to Gemini's resumable Files API,
+ * bypassing the Next.js server proxy. Used for large files that would
+ * otherwise time out going through the server.
+ */
+async function directUploadToGemini(
+  blob: Blob,
+  mimeType: string,
+  apiKey: string
+): Promise<string> {
+  // Step 1: Start resumable upload
+  const startRes = await fetch(
+    `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: {
+        "X-Goog-Upload-Protocol": "resumable",
+        "X-Goog-Upload-Command": "start",
+        "X-Goog-Upload-Header-Content-Length": blob.size.toString(),
+        "X-Goog-Upload-Header-Content-Type": mimeType,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        file: { displayName: "audio" },
+      }),
+    }
+  );
+
+  if (!startRes.ok) {
+    const errText = await startRes.text();
+    throw new Error(`Gemini upload start failed: ${errText}`);
+  }
+
+  const uploadUrl = startRes.headers.get("X-Goog-Upload-URL");
+  if (!uploadUrl) {
+    throw new Error("No upload URL returned from Gemini");
+  }
+
+  // Step 2: Upload the file data
+  const uploadRes = await fetch(uploadUrl, {
+    method: "PUT",
+    headers: {
+      "X-Goog-Upload-Command": "upload, finalize",
+      "X-Goog-Upload-Offset": "0",
+      "Content-Length": blob.size.toString(),
+    },
+    body: blob,
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(`Gemini file upload failed: ${errText}`);
+  }
+
+  const uploadResult = await uploadRes.json();
+  const fileUri = uploadResult.file?.uri;
+
+  if (!fileUri) {
+    throw new Error("No file URI in upload response");
+  }
+
+  // Step 3: Poll until the file is ACTIVE (Gemini processes large files async)
+  let fileState = uploadResult.file?.state;
+  const fileName = uploadResult.file?.name;
+
+  while (fileState === "PROCESSING") {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+
+    const checkRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/${fileName}?key=${apiKey}`
+    );
+
+    if (checkRes.ok) {
+      const checkResult = await checkRes.json();
+      fileState = checkResult.state;
+      if (fileState === "FAILED") {
+        throw new Error("Gemini file processing failed");
+      }
+    }
+  }
+
+  return fileUri;
+}
+
+/**
+ * Upload via the Next.js server proxy (original flow). Works well for
+ * files under ~20MB where the browser fetch won't time out.
+ */
+async function proxyUploadToGemini(
+  blob: Blob,
+  mimeType: string,
+  apiKey: string
+): Promise<string> {
+  const formData = new FormData();
+  formData.append("file", blob, "audio");
+  formData.append("mimeType", mimeType);
+
+  const uploadRes = await fetch("/api/gemini/upload", {
+    method: "POST",
+    headers: { "X-Gemini-Key": apiKey },
+    body: formData,
+  });
+
+  if (!uploadRes.ok) {
+    const errData = await uploadRes.json().catch(() => null);
+    throw new Error(
+      errData && isApiError(errData)
+        ? errData.error
+        : `File upload failed (${uploadRes.status})`
+    );
+  }
+
+  const { uri } = await uploadRes.json();
+  return uri;
+}
+
+/**
+ * Upload a file to Gemini, choosing the right strategy based on size.
+ * Files over 20MB go directly to Gemini's API from the browser.
+ * Smaller files use the server proxy. If direct upload fails (e.g. CORS),
+ * falls back to the server proxy.
+ */
+async function uploadToGemini(
+  blob: Blob,
+  mimeType: string,
+  apiKey: string
+): Promise<string> {
+  const fileSizeMB = blob.size / (1024 * 1024);
+
+  if (fileSizeMB > DIRECT_UPLOAD_THRESHOLD_MB) {
+    console.log(`[gemini] File is ${fileSizeMB.toFixed(1)}MB (>${DIRECT_UPLOAD_THRESHOLD_MB}MB), using direct upload`);
+    try {
+      return await directUploadToGemini(blob, mimeType, apiKey);
+    } catch (err) {
+      console.warn(
+        "[gemini] Direct upload failed, falling back to server proxy:",
+        err instanceof Error ? err.message : err
+      );
+      return await proxyUploadToGemini(blob, mimeType, apiKey);
+    }
+  }
+
+  console.log(`[gemini] File is ${fileSizeMB.toFixed(1)}MB, using server proxy upload`);
+  return await proxyUploadToGemini(blob, mimeType, apiKey);
+}
 
 export async function processWithGemini(
   documentId: string,
@@ -47,26 +194,7 @@ export async function processWithGemini(
 
     // Step 1: Upload to Files API
     console.log("[gemini] Uploading to Files API...");
-    const formData = new FormData();
-    formData.append("file", asset.blob, "audio");
-    formData.append("mimeType", asset.mimeType);
-
-    const uploadRes = await fetch("/api/gemini/upload", {
-      method: "POST",
-      headers: { "X-Gemini-Key": apiKey },
-      body: formData,
-    });
-
-    if (!uploadRes.ok) {
-      const errData = await uploadRes.json().catch(() => null);
-      throw new Error(
-        errData && isApiError(errData)
-          ? errData.error
-          : `File upload failed (${uploadRes.status})`
-      );
-    }
-
-    const { uri } = await uploadRes.json();
+    const uri = await uploadToGemini(asset.blob, asset.mimeType, apiKey);
     console.log("[gemini] Upload complete, URI:", uri);
 
     // Step 2: Estimate duration and plan chunks
