@@ -156,7 +156,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const parsed = JSON.parse(responseText);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(responseText);
+    } catch {
+      // Gemini sometimes produces truncated JSON for very long transcripts.
+      // Try to recover by finding the last complete segment.
+      console.warn("[gemini/transcribe] JSON parse failed, attempting recovery...");
+      parsed = recoverTruncatedJson(responseText);
+      if (!parsed) {
+        console.error("[gemini/transcribe] JSON recovery failed, length:", responseText.length);
+        return NextResponse.json(
+          { error: "Gemini returned malformed JSON. The audio may be too long for a single request. Try splitting it into shorter segments.", code: "validation", retryable: true } satisfies ApiErrorResponse,
+          { status: 502 }
+        );
+      }
+      console.log("[gemini/transcribe] Recovered partial JSON successfully");
+    }
+
     const validated = TranscriptionResponseSchema.safeParse(parsed);
 
     if (!validated.success) {
@@ -191,5 +208,39 @@ export async function POST(req: NextRequest) {
       { error: message, code: "upstream_error", retryable: true } satisfies ApiErrorResponse,
       { status: 500 }
     );
+  }
+}
+
+/**
+ * Attempt to recover a truncated JSON response from Gemini.
+ * Finds the last complete segment object and closes the array/object.
+ */
+function recoverTruncatedJson(text: string): unknown | null {
+  try {
+    // Find the last complete "}" followed by a comma or end of array
+    const lastCompleteSegment = text.lastIndexOf('"translation"');
+    if (lastCompleteSegment === -1) return null;
+
+    // Find the closing "}" of that segment
+    let braceDepth = 0;
+    let cutPoint = -1;
+    for (let i = lastCompleteSegment; i < text.length; i++) {
+      if (text[i] === "{") braceDepth++;
+      if (text[i] === "}") {
+        braceDepth--;
+        if (braceDepth <= 0) {
+          cutPoint = i + 1;
+          break;
+        }
+      }
+    }
+
+    if (cutPoint === -1) return null;
+
+    // Truncate and close the JSON structure
+    const truncated = text.slice(0, cutPoint) + "]}";
+    return JSON.parse(truncated);
+  } catch {
+    return null;
   }
 }

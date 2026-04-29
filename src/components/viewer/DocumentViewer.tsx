@@ -34,7 +34,7 @@ export function DocumentViewer({ document: doc }: { document: Document }) {
       doc.fileType
     );
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2">
+      <div className="flex h-full flex-col items-center justify-center gap-3">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
         <p className="text-sm text-stone-500">Processing: {doc.title}</p>
         <div className="text-xs text-stone-400 space-y-0.5 text-center">
@@ -42,6 +42,18 @@ export function DocumentViewer({ document: doc }: { document: Document }) {
           <p>Estimated cost: {est.costRange}</p>
           <p className="text-[10px]">{est.details}</p>
         </div>
+        <button
+          onClick={async () => {
+            await updateDocument(doc.id, {
+              status: "pending",
+              errorMessage: null,
+            });
+            processNextPending();
+          }}
+          className="mt-2 rounded border border-stone-200 px-3 py-1.5 text-xs text-stone-500 hover:bg-stone-50"
+        >
+          Stuck? Reset and retry
+        </button>
       </div>
     );
   }
