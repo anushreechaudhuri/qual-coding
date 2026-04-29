@@ -1,9 +1,18 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { ApiKeyForm } from "@/components/settings/ApiKeyForm";
 import { exportFullBackup, importFullBackup } from "@/lib/export/backup";
+import {
+  isFileSystemAccessSupported,
+  pickSyncFolder,
+  getSavedFolderHandle,
+  clearSyncFolder,
+  syncToFolder,
+  syncFromFolder,
+  getSyncFolderInfo,
+} from "@/lib/sync/localFolderSync";
 
 export default function SettingsPage() {
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
@@ -110,7 +119,150 @@ export default function SettingsPage() {
             Documents will show as "pending" if the original files need re-processing.
           </p>
         </section>
+
+        <FolderSyncSection />
       </div>
     </div>
+  );
+}
+
+function FolderSyncSection() {
+  const [folderHandle, setFolderHandle] = useState<FileSystemDirectoryHandle | null>(null);
+  const [folderInfo, setFolderInfo] = useState<{ name: string; lastSynced: string | null } | null>(null);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [supported] = useState(() => isFileSystemAccessSupported());
+
+  useEffect(() => {
+    getSavedFolderHandle().then((h) => {
+      if (h) {
+        setFolderHandle(h);
+        getSyncFolderInfo(h).then(setFolderInfo);
+      }
+    });
+  }, []);
+
+  async function handlePickFolder() {
+    const handle = await pickSyncFolder();
+    if (handle) {
+      setFolderHandle(handle);
+      const info = await getSyncFolderInfo(handle);
+      setFolderInfo(info);
+    }
+  }
+
+  async function handleSyncTo() {
+    if (!folderHandle) return;
+    setSyncStatus("Syncing to folder...");
+    try {
+      const result = await syncToFolder(folderHandle);
+      const sizeKB = (result.size / 1024).toFixed(0);
+      setSyncStatus(`Saved ${result.files} files (${sizeKB}KB) to ${folderInfo?.name ?? "folder"}`);
+      setFolderInfo(await getSyncFolderInfo(folderHandle));
+      setTimeout(() => setSyncStatus(null), 5000);
+    } catch (err) {
+      setSyncStatus(`Sync failed: ${err instanceof Error ? err.message : "unknown error"}`);
+    }
+  }
+
+  async function handleSyncFrom() {
+    if (!folderHandle) return;
+    setSyncStatus("Restoring from folder...");
+    try {
+      const result = await syncFromFolder(folderHandle);
+      const summary = Object.entries(result.tables)
+        .map(([k, v]) => `${v} ${k}`)
+        .join(", ");
+      setSyncStatus(`Restored: ${summary}`);
+      setTimeout(() => setSyncStatus(null), 5000);
+    } catch (err) {
+      setSyncStatus(`Restore failed: ${err instanceof Error ? err.message : "unknown error"}`);
+    }
+  }
+
+  async function handleDisconnect() {
+    await clearSyncFolder();
+    setFolderHandle(null);
+    setFolderInfo(null);
+  }
+
+  if (!supported) {
+    return (
+      <section className="space-y-4 border-t border-stone-200 pt-8">
+        <div>
+          <h2 className="text-sm font-medium text-stone-900">Folder Sync</h2>
+          <p className="mt-1 text-xs text-stone-500">
+            Folder sync requires a Chromium-based browser (Chrome, Edge, Arc).
+            Use the backup/restore feature above instead.
+          </p>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="space-y-4 border-t border-stone-200 pt-8">
+      <div>
+        <h2 className="text-sm font-medium text-stone-900">Folder Sync</h2>
+        <p className="mt-1 text-xs text-stone-500">
+          Save your data to a local folder. Pick a folder inside Google Drive,
+          Dropbox, pCloud, or OneDrive and it syncs to the cloud automatically.
+          No API keys or OAuth needed.
+        </p>
+      </div>
+
+      {folderHandle ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-100 px-3 py-2">
+            <span className="text-xs text-green-800 font-medium">
+              Connected: {folderInfo?.name ?? "folder"}/QualCoding
+            </span>
+            {folderInfo?.lastSynced && (
+              <span className="text-[10px] text-green-600">
+                Last synced: {new Date(folderInfo.lastSynced).toLocaleString()}
+              </span>
+            )}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleSyncTo}
+              className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+            >
+              Save to folder
+            </button>
+            <button
+              onClick={handleSyncFrom}
+              className="rounded-md border border-stone-200 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50"
+            >
+              Restore from folder
+            </button>
+            <button
+              onClick={handleDisconnect}
+              className="rounded-md border border-stone-200 px-4 py-2 text-sm text-stone-500 hover:bg-stone-50"
+            >
+              Disconnect
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={handlePickFolder}
+          className="rounded-md border border-stone-200 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50"
+        >
+          Choose sync folder
+        </button>
+      )}
+
+      {syncStatus && (
+        <p className={`text-xs ${syncStatus.includes("failed") ? "text-red-600" : "text-green-600"}`}>
+          {syncStatus}
+        </p>
+      )}
+
+      <p className="text-[10px] text-stone-400">
+        Tip: Pick a folder inside your cloud drive (e.g., Google Drive, Dropbox, pCloud).
+        Your data syncs to the cloud automatically when the desktop app is running.
+      </p>
+    </section>
   );
 }
