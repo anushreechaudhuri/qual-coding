@@ -1,9 +1,10 @@
 "use client";
 
 import type { Document } from "@/types";
+import { TextAnnotator } from "@/components/editor/TextAnnotator";
 
 /**
- * Renders a document's canonical content as plain text with a serif font.
+ * Renders a document's canonical content with coding support.
  *
  * IMPORTANT (character offset invariant): This component renders the stored
  * content string byte-for-byte. It must NOT normalize whitespace, strip
@@ -11,8 +12,8 @@ import type { Document } from "@/types";
  * codings reference this exact string, and any modification would break
  * every existing coding on this document.
  *
- * If translationContent exists, it appears in italics below the original.
- * For audio documents with segments, use SegmentList instead.
+ * Text selection triggers the CodePicker dropdown for applying codes.
+ * Existing codings render as colored highlights.
  */
 export function MarkdownViewer({ document: doc }: { document: Document }) {
   if (!doc.content) {
@@ -23,26 +24,19 @@ export function MarkdownViewer({ document: doc }: { document: Document }) {
     );
   }
 
-  // For documents with segments (audio transcriptions), render via SegmentList.
-  // This component handles flat text documents (PDFs, text files).
-  const paragraphs = doc.content.split("\n\n");
-  const translationParagraphs = doc.translationContent?.split("\n\n") ?? [];
-
   return (
-    <div
-      className="px-6 py-4 max-w-2xl mx-auto font-serif text-stone-900 leading-relaxed"
-      data-content-container
-    >
-      {paragraphs.map((para, i) => (
-        <div key={i} className="mb-4">
-          <p className="whitespace-pre-wrap">{para}</p>
-          {translationParagraphs[i] && (
-            <p className="mt-1 whitespace-pre-wrap italic text-stone-500 text-sm">
-              {translationParagraphs[i]}
-            </p>
-          )}
+    <div className="px-6 py-4 max-w-2xl mx-auto font-serif text-stone-900 leading-relaxed">
+      <TextAnnotator document={doc} />
+      {doc.translationContent && (
+        <div className="mt-6 pt-4 border-t border-stone-100">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-stone-400 font-sans mb-2">
+            Translation
+          </p>
+          <div className="italic text-stone-500 text-sm">
+            <TextAnnotator document={doc} isTranslation />
+          </div>
         </div>
-      ))}
+      )}
     </div>
   );
 }
