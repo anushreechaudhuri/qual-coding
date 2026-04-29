@@ -86,10 +86,12 @@ The primary language is ${language}. Be thorough and accurate. These are researc
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 300_000);
 
+    // Use streamGenerateContent for faster first-byte response and to
+    // avoid connection timeouts on long chunks
     let geminiRes: Response;
     try {
       geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse&key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -118,8 +120,24 @@ The primary language is ${language}. Be thorough and accurate. These are researc
       );
     }
 
-    const result = await geminiRes.json();
-    const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    // Parse SSE stream: collect all text parts from streamed chunks
+    const sseText = await geminiRes.text();
+    let responseText = "";
+
+    for (const line of sseText.split("\n")) {
+      if (!line.startsWith("data: ")) continue;
+      const data = line.slice(6);
+      if (data === "[DONE]") break;
+      try {
+        const chunk = JSON.parse(data);
+        const part = chunk.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (part) responseText += part;
+      } catch {
+        // skip malformed SSE lines
+      }
+    }
+
+    console.log(`[gemini/chunk] ${startMin}-${endMin}: received ${responseText.length} chars`);
 
     if (!responseText) {
       return NextResponse.json(
