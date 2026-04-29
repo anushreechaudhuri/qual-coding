@@ -73,20 +73,29 @@ export async function POST(req: NextRequest) {
     const isScannedOrHandwritten =
       mimeType.startsWith("image/") || extractionMode === "ocr";
 
+    const parseBody: Record<string, unknown> = {
+      input: fileId,
+      settings: {
+        ocr_system: "standard",
+        extraction_mode: isScannedOrHandwritten ? "ocr" : (extractionMode ?? "hybrid"),
+        return_images: ["figure"],
+      },
+      enhance: {
+        summarize_figures: true,
+        // Agentic text enhancement for handwritten/faded/scanned documents
+        ...(isScannedOrHandwritten && {
+          agentic: [{ scope: "text" }],
+        }),
+      },
+    };
+
     const parseRes = await fetch("https://platform.reducto.ai/parse", {
       method: "POST",
       headers: {
         Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        document_url: fileId,
-        advanced_options: {
-          ocr_system: "standard",
-          extraction_mode: isScannedOrHandwritten ? "ocr" : (extractionMode ?? "hybrid"),
-          return_figure_images: true,
-        },
-      }),
+      body: JSON.stringify(parseBody),
     });
 
     if (!parseRes.ok) {

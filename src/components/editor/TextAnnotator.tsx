@@ -51,16 +51,9 @@ export function TextAnnotator({
     [doc.id, isTranslation]
   );
 
-  const codeMap = new Map<string, Code>(codes ? [] : []);
-  if (codes) {
-    for (const code of codes) {
-      codeMap.set(code.projectId, code); // placeholder, need real map
-    }
-  }
-  // Build proper code map
-  const codeMapReal = new Map<string, Code>();
+  const codeMap = new Map<string, Code>();
   for (const code of codes ?? []) {
-    codeMapReal.set(code.id, code);
+    codeMap.set(code.id, code);
   }
 
   const handleMouseUp = useCallback(() => {
@@ -125,7 +118,7 @@ export function TextAnnotator({
         <HighlightLayer
           text={content}
           codings={codings ?? []}
-          codeMap={codeMapReal}
+          codeMap={codeMap}
           onCodingClick={handleCodingClick}
         />
       </div>

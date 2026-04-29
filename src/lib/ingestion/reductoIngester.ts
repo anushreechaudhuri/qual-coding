@@ -44,7 +44,8 @@ export async function processWithReducto(
       )
     );
 
-    const isImage = asset.mimeType.startsWith("image/");
+    // Use OCR mode for images and scanned PDFs (field notes, handwritten docs)
+    const isImageOrScan = asset.mimeType.startsWith("image/") || asset.mimeType === "application/pdf";
 
     const response = await fetch("/api/reducto/parse", {
       method: "POST",
@@ -56,7 +57,7 @@ export async function processWithReducto(
         fileBase64: base64,
         fileName: `document.${asset.mimeType.split("/")[1] ?? "pdf"}`,
         mimeType: asset.mimeType,
-        extractionMode: isImage ? "ocr" : "hybrid",
+        extractionMode: isImageOrScan ? "ocr" : "hybrid",
       }),
     });
 
