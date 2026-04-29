@@ -8,6 +8,7 @@ import { CodeTree } from "./CodeTree";
 import { CodeDetail } from "./CodeDetail";
 import { CodeForm } from "./CodeForm";
 import { CodebookImport } from "./CodebookImport";
+import { CodebookCopyFrom } from "./CodebookCopyFrom";
 
 /**
  * Right-panel codebook section. Shows the code tree with option to
@@ -18,6 +19,7 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
   const [selectedCodeId, setSelectedCodeId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showCopyFrom, setShowCopyFrom] = useState(false);
 
   const selectedCode = codes.find((c) => c.id === selectedCodeId) ?? null;
 
@@ -48,6 +50,12 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
             className="hover:text-stone-600"
           >
             + Add
+          </button>
+          <button
+            onClick={() => setShowCopyFrom(true)}
+            className="hover:text-stone-600"
+          >
+            Copy
           </button>
           <button
             onClick={() => setShowImport(true)}
@@ -87,6 +95,12 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
         <CodebookImport
           projectId={projectId}
           onClose={() => setShowImport(false)}
+        />
+      )}
+      {showCopyFrom && (
+        <CodebookCopyFrom
+          projectId={projectId}
+          onClose={() => setShowCopyFrom(false)}
         />
       )}
     </div>
