@@ -2,6 +2,8 @@
 
 import { useState, useMemo } from "react";
 import { updateDocument } from "@/lib/db/operations";
+import { MemoEditor } from "@/components/memos/MemoEditor";
+import { MemoList } from "@/components/memos/MemoList";
 import type { Document, AudioSegment } from "@/types";
 
 /**
@@ -11,6 +13,7 @@ import type { Document, AudioSegment } from "@/types";
  */
 export function DocumentHeader({ document: doc }: { document: Document }) {
   const isAudio = doc.fileType.startsWith("audio/");
+  const [showMemo, setShowMemo] = useState(false);
   const speakers = useMemo(
     () => [...new Set(doc.segments.map((s) => s.speaker))],
     [doc.segments]
@@ -18,30 +21,52 @@ export function DocumentHeader({ document: doc }: { document: Document }) {
 
   return (
     <div className="border-b border-stone-100 px-6 py-3">
-      <h2 className="text-lg font-semibold text-stone-900 font-serif">
-        {doc.title}
-      </h2>
-      <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-500">
-        {doc.dateCollected && <span>{doc.dateCollected}</span>}
-        <span>&middot;</span>
-        <span>{doc.language}</span>
-        {doc.metadata.speakerCount && (
-          <>
+      <div className="flex items-start justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-stone-900 font-serif">
+            {doc.title}
+          </h2>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-stone-500">
+            {doc.dateCollected && <span>{doc.dateCollected}</span>}
             <span>&middot;</span>
-            <span>{doc.metadata.speakerCount} speakers</span>
-          </>
-        )}
-        {doc.metadata.durationSeconds && (
-          <>
-            <span>&middot;</span>
-            <span>{formatDuration(doc.metadata.durationSeconds)}</span>
-          </>
-        )}
-        <PurposeBadge purpose={doc.purpose} />
+            <span>{doc.language}</span>
+            {doc.metadata.speakerCount && (
+              <>
+                <span>&middot;</span>
+                <span>{doc.metadata.speakerCount} speakers</span>
+              </>
+            )}
+            {doc.metadata.durationSeconds && (
+              <>
+                <span>&middot;</span>
+                <span>{formatDuration(doc.metadata.durationSeconds)}</span>
+              </>
+            )}
+            <PurposeBadge purpose={doc.purpose} />
+          </div>
+        </div>
+        <button
+          onClick={() => setShowMemo(!showMemo)}
+          className="shrink-0 rounded px-2 py-1 text-xs text-stone-400 hover:text-stone-600 hover:bg-stone-50"
+        >
+          Memo
+        </button>
       </div>
 
       {isAudio && speakers.length > 0 && (
         <SpeakerList document={doc} speakers={speakers} />
+      )}
+
+      {showMemo && (
+        <div className="mt-3 pt-3 border-t border-stone-100 space-y-3">
+          <MemoList targetType="document" targetId={doc.id} />
+          <MemoEditor
+            projectId={doc.projectId}
+            targetType="document"
+            targetId={doc.id}
+            onClose={() => setShowMemo(false)}
+          />
+        </div>
       )}
     </div>
   );

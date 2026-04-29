@@ -5,6 +5,8 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
 import { updateCode, deleteCode } from "@/lib/db/operations";
 import { mergeCodes } from "@/lib/codebook/codebookOperations";
+import { MemoEditor } from "@/components/memos/MemoEditor";
+import { MemoList } from "@/components/memos/MemoList";
 import type { Code } from "@/types";
 
 /**
@@ -21,6 +23,7 @@ export function CodeDetail({
   const [editing, setEditing] = useState(false);
   const [definition, setDefinition] = useState(code.definition);
   const [showMerge, setShowMerge] = useState(false);
+  const [showMemo, setShowMemo] = useState(false);
 
   // Get coding count and recent quotations for this code
   const codings = useLiveQuery(
@@ -163,6 +166,19 @@ export function CodeDetail({
         </div>
       )}
 
+      {/* Memos */}
+      {showMemo && (
+        <div className="space-y-2">
+          <MemoList targetType="code" targetId={code.id} />
+          <MemoEditor
+            projectId={code.projectId}
+            targetType="code"
+            targetId={code.id}
+            onClose={() => setShowMemo(false)}
+          />
+        </div>
+      )}
+
       {/* Actions */}
       <div className="flex items-center gap-3 pt-2 border-t border-stone-100 text-xs">
         <button
@@ -170,6 +186,12 @@ export function CodeDetail({
           className="text-stone-500 hover:text-stone-700"
         >
           Edit
+        </button>
+        <button
+          onClick={() => setShowMemo(!showMemo)}
+          className="text-stone-500 hover:text-stone-700"
+        >
+          Memo
         </button>
         <button
           onClick={() => setShowMerge(!showMerge)}
