@@ -2,8 +2,14 @@
 
 import { useState, useCallback, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
+import dynamic from "next/dynamic";
 import type { Document } from "@/types";
 import { updateDocument } from "@/lib/db/operations";
+
+const ContentEditor = dynamic(
+  () => import("./ContentEditor").then((m) => ({ default: m.ContentEditor })),
+  { ssr: false, loading: () => <p className="text-xs text-stone-400 p-4">Loading editor...</p> }
+);
 import { adjustCodingOffsets } from "@/lib/coding/offsetAdjuster";
 import { useUndoStore } from "@/lib/stores/undoStore";
 import { TextAnnotator } from "@/components/editor/TextAnnotator";
@@ -235,17 +241,15 @@ export function MarkdownViewer({ document: doc }: { document: Document }) {
         </div>
       )}
 
-      {/* Code mode: editing */}
+      {/* Code mode: WYSIWYG editing */}
       {mode === "code" && editing && (
-        <div className="space-y-2">
-          <p className="text-[10px] text-stone-500">
-            Editing raw content. Highlights will auto-adjust when you save. Deleted text removes its highlights.
+        <div>
+          <p className="text-[10px] text-stone-500 mb-2">
+            Editing with live formatting. Highlights auto-adjust on save. Deleted text removes its highlights.
           </p>
-          <textarea
-            value={editContent}
-            onChange={(e) => setEditContent(e.target.value)}
-            className="w-full min-h-[400px] rounded-md border border-stone-200 bg-white px-4 py-3 font-mono text-sm text-stone-800 leading-relaxed focus:border-stone-400 focus:outline-none resize-y"
-            spellCheck={false}
+          <ContentEditor
+            content={editContent}
+            onChange={setEditContent}
           />
         </div>
       )}
