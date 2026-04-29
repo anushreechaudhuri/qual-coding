@@ -91,19 +91,31 @@ export async function POST(req: NextRequest) {
       language,
     });
 
-    // 10-minute timeout for long audio transcriptions
+    // 15-minute timeout for long audio transcriptions
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 600_000);
+    const timeout = setTimeout(() => controller.abort(), 900_000);
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestBody),
-        signal: controller.signal,
-      }
-    );
+    let geminiRes: Response;
+    try {
+      geminiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestBody),
+          signal: controller.signal,
+        }
+      );
+    } catch (fetchErr) {
+      clearTimeout(timeout);
+      const msg = fetchErr instanceof Error ? fetchErr.message : "fetch failed";
+      const cause = fetchErr instanceof Error ? String((fetchErr as NodeJS.ErrnoException).cause ?? "") : "";
+      console.error("[gemini/transcribe] Fetch failed:", msg, cause);
+      return NextResponse.json(
+        { error: `Connection to Gemini failed: ${msg}. ${cause}`, code: "upstream_error", retryable: true } satisfies ApiErrorResponse,
+        { status: 502 }
+      );
+    }
 
     clearTimeout(timeout);
 

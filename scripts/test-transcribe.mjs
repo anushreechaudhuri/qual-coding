@@ -109,10 +109,15 @@ const transcribeStart = Date.now();
 
 const prompt = `Transcribe this audio. For each speaker turn, provide: speaker label, timestamp (MM:SS), original language content, language code, and English translation. Return JSON with a "segments" array.`;
 
+// 15-minute timeout for long audio transcriptions
+const transcribeController = new AbortController();
+const transcribeTimeout = setTimeout(() => transcribeController.abort(), 900_000);
+
 const transcribeRes = await fetch(
   `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent?key=${apiKey}`,
   {
     method: "POST",
+    signal: transcribeController.signal,
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{
@@ -148,6 +153,7 @@ const transcribeRes = await fetch(
   }
 );
 
+clearTimeout(transcribeTimeout);
 console.log(`Transcribe response: ${transcribeRes.status} in ${((Date.now() - transcribeStart) / 1000).toFixed(0)}s`);
 
 if (!transcribeRes.ok) {
