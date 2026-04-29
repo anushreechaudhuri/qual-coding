@@ -19,8 +19,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Google({
       authorization: {
         params: {
-          scope:
-            "openid email profile https://www.googleapis.com/auth/drive.appdata",
+          // Drive scope commented out until OAuth consent screen is verified.
+          // Add back: https://www.googleapis.com/auth/drive.appdata
+          scope: "openid email profile",
           access_type: "offline",
           prompt: "consent",
         },

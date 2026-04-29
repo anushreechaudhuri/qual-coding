@@ -36,12 +36,12 @@ export class QualCodingDatabase extends Dexie {
   constructor() {
     super("QualCodingDB");
 
-    this.version(1).stores({
+    this.version(2).stores({
       // Compound index [projectId+purpose] enables queries like
       // "all primary documents in project X"
       projects: "id, updatedAt, _dirty, deletedAt",
       documents:
-        "id, projectId, [projectId+purpose], [projectId+status], updatedAt, _dirty, deletedAt",
+        "id, projectId, status, [projectId+purpose], [projectId+status], updatedAt, _dirty, deletedAt",
       codes: "id, projectId, [projectId+parentId], updatedAt, _dirty, deletedAt",
       codings:
         "id, projectId, documentId, codeId, [documentId+codeId], updatedAt, _dirty, deletedAt",
