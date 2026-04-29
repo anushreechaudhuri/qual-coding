@@ -1,12 +1,12 @@
 /**
  * API route proxy for Gemini audio transcription.
  *
- * Accepts base64-encoded audio from the client, sends it to Gemini
- * with a prompt requesting speaker-diarized transcription with timestamps
- * and English translation. Uses structured JSON output (response_schema)
- * to enforce the segment format.
+ * Accepts either:
+ *   - fileUri (from the /api/gemini/upload step, for large files)
+ *   - fileBase64 + mimeType (for small files, inline data)
  *
- * The client sends its BYO Gemini API key via the X-Gemini-Key header.
+ * Calls generateContent server-side to avoid browser fetch issues
+ * with long-running Gemini requests.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -14,9 +14,7 @@ import { GoogleGenerativeAI, type Schema, SchemaType } from "@google/generative-
 import { TranscriptionResponseSchema } from "@/types/gemini";
 import type { ApiErrorResponse } from "@/types/api";
 
-export const config = {
-  api: { bodyParser: { sizeLimit: "50mb" } },
-};
+export const maxDuration = 300;
 
 const TRANSCRIPTION_PROMPT = `You are a transcription assistant. Transcribe the provided audio with the following requirements:
 
@@ -62,11 +60,11 @@ export async function POST(req: NextRequest) {
 
   try {
     const body = await req.json();
-    const { fileBase64, mimeType, language } = body;
+    const { fileBase64, fileUri, mimeType, language } = body;
 
-    if (!fileBase64 || !mimeType) {
+    if (!fileUri && !fileBase64) {
       return NextResponse.json(
-        { error: "Missing audio data", code: "validation", retryable: false } satisfies ApiErrorResponse,
+        { error: "Missing audio data (need fileUri or fileBase64)", code: "validation", retryable: false } satisfies ApiErrorResponse,
         { status: 400 }
       );
     }
@@ -84,15 +82,12 @@ export async function POST(req: NextRequest) {
       TRANSCRIPTION_PROMPT +
       `\n\nThe primary language of this recording is ${language}. Pay special attention to accurate transcription in this language.`;
 
-    const result = await model.generateContent([
-      prompt,
-      {
-        inlineData: {
-          mimeType,
-          data: fileBase64,
-        },
-      },
-    ]);
+    // Build the file part: either a URI reference or inline base64
+    const filePart = fileUri
+      ? { fileData: { mimeType: mimeType || "audio/mpeg", fileUri } }
+      : { inlineData: { mimeType, data: fileBase64 } };
+
+    const result = await model.generateContent([prompt, filePart]);
 
     const responseText = result.response.text();
     const parsed = JSON.parse(responseText);
@@ -109,8 +104,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Enforce 1:1 segment correspondence: every segment must have both
-    // content and translation. Normalize any mismatches.
     const segments = validated.data.segments.map((seg, i) => ({
       ...seg,
       translation: seg.translation || seg.content,

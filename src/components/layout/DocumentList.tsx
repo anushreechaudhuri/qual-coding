@@ -2,6 +2,7 @@
 
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
+import { deleteDocument } from "@/lib/db/operations";
 import { useUiStore } from "@/lib/stores/uiStore";
 import type { DocumentPurpose, Document } from "@/types";
 
@@ -75,17 +76,32 @@ export function DocumentList({
               <ul className="space-y-px">
                 {docs.map((doc) => (
                   <li key={doc.id}>
-                    <button
+                    <div
                       onClick={() => setCurrentDocument(doc.id)}
-                      className={`flex w-full items-center gap-2 px-4 py-1 text-left text-sm ${
+                      className={`group flex w-full items-center gap-2 px-4 py-1 text-left text-sm cursor-pointer ${
                         currentDocumentId === doc.id
                           ? "bg-stone-100 font-medium text-stone-900"
                           : "text-stone-600 hover:bg-stone-50"
                       }`}
                     >
                       <StatusDot status={doc.status} />
-                      <span className="truncate">{doc.title}</span>
-                    </button>
+                      <span className="flex-1 truncate">{doc.title}</span>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm(`Delete "${doc.title}"?`)) {
+                            deleteDocument(doc.id);
+                            if (currentDocumentId === doc.id) {
+                              setCurrentDocument(null);
+                            }
+                          }
+                        }}
+                        className="hidden shrink-0 text-[10px] text-stone-400 hover:text-red-500 group-hover:inline"
+                        title="Delete document"
+                      >
+                        ×
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
