@@ -1,6 +1,8 @@
 "use client";
 
 import type { Document } from "@/types";
+import { updateDocument } from "@/lib/db/operations";
+import { processNextPending } from "@/lib/ingestion/processingQueue";
 import { DocumentHeader } from "./DocumentHeader";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { AudioViewer } from "./AudioViewer";
@@ -36,11 +38,23 @@ export function DocumentViewer({ document: doc }: { document: Document }) {
 
   if (doc.status === "error") {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 px-8 text-center">
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
         <p className="text-sm text-red-600">Processing failed</p>
-        <p className="text-xs text-stone-500">{doc.errorMessage}</p>
-        <p className="text-xs text-stone-400 mt-2">
-          Check your API keys in Settings and try uploading again.
+        <p className="text-xs text-stone-500 max-w-md">{doc.errorMessage}</p>
+        <button
+          onClick={async () => {
+            await updateDocument(doc.id, {
+              status: "pending",
+              errorMessage: null,
+            });
+            processNextPending();
+          }}
+          className="rounded-md border border-stone-200 px-4 py-2 text-sm text-stone-600 hover:bg-stone-50"
+        >
+          Retry
+        </button>
+        <p className="text-[10px] text-stone-400">
+          The file is cached locally. Retry will re-process it.
         </p>
       </div>
     );

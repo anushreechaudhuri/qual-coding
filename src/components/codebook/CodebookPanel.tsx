@@ -45,42 +45,23 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-stone-100">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[11px] font-medium uppercase tracking-wider text-stone-400">
+      <div className="flex items-center justify-between px-3 py-1.5 border-b border-stone-100">
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] font-medium uppercase tracking-wider text-stone-400">
             Codebook
           </span>
           {isSynced && (
-            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-600">
+            <span className="rounded bg-blue-50 px-1 py-px text-[8px] font-medium text-blue-600">
               synced
             </span>
           )}
         </div>
-        <div className="flex gap-2 text-xs text-stone-400">
-          <button
-            onClick={() => setShowCreate(true)}
-            className="hover:text-stone-600"
-          >
-            + Add
-          </button>
-          <button
-            onClick={() => setShowSync(true)}
-            className="hover:text-stone-600"
-          >
-            Sync
-          </button>
-          <button
-            onClick={() => setShowCopyFrom(true)}
-            className="hover:text-stone-600"
-          >
-            Copy
-          </button>
-          <button
-            onClick={() => setShowImport(true)}
-            className="hover:text-stone-600"
-          >
-            Upload
-          </button>
+        <div className="flex gap-1 text-[10px] text-stone-400">
+          <button onClick={() => setShowCreate(true)} className="hover:text-stone-600" title="Add code">+</button>
+          <span className="text-stone-200">|</span>
+          <button onClick={() => setShowSync(true)} className="hover:text-stone-600">Sync</button>
+          <button onClick={() => setShowCopyFrom(true)} className="hover:text-stone-600">Copy</button>
+          <button onClick={() => setShowImport(true)} className="hover:text-stone-600">CSV</button>
         </div>
       </div>
 
