@@ -1,14 +1,14 @@
 /**
- * Google Drive API wrapper for appDataFolder operations.
+ * Google Drive API wrapper.
  *
- * Uses the OAuth access token from the Auth.js session to call the
- * Drive REST API v3. All metadata files go in appDataFolder (narrow
- * scope). Binary files (audio, PDFs) use regular Drive storage with
- * the user's 15GB quota to avoid appDataFolder size limits.
+ * Uses a dedicated "QualCoding" folder in the user's Drive (visible
+ * to them, uses their 15GB quota). Uses the drive.file scope which
+ * only requires basic verification.
  */
 
 const DRIVE_API = "https://www.googleapis.com/drive/v3";
 const UPLOAD_API = "https://www.googleapis.com/upload/drive/v3";
+const APP_FOLDER_NAME = "QualCoding";
 
 export interface DriveFile {
   id: string;
@@ -17,14 +17,58 @@ export interface DriveFile {
   size?: string;
 }
 
+let appFolderId: string | null = null;
+
 /**
- * List all files in appDataFolder.
+ * Get or create the QualCoding folder in the user's Drive root.
+ */
+async function getOrCreateAppFolder(accessToken: string): Promise<string> {
+  if (appFolderId) return appFolderId;
+
+  // Search for existing folder
+  const searchRes = await fetch(
+    `${DRIVE_API}/files?q=name='${APP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id)&pageSize=1`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (!searchRes.ok) throw new DriveError(searchRes.status, await searchRes.text());
+
+  const searchData = await searchRes.json();
+  if (searchData.files?.length > 0) {
+    appFolderId = searchData.files[0].id;
+    return appFolderId!;
+  }
+
+  // Create folder
+  const createRes = await fetch(`${DRIVE_API}/files`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: APP_FOLDER_NAME,
+      mimeType: "application/vnd.google-apps.folder",
+    }),
+  });
+
+  if (!createRes.ok) throw new DriveError(createRes.status, await createRes.text());
+
+  const folder = await createRes.json();
+  appFolderId = folder.id;
+  return appFolderId!;
+}
+
+/**
+ * List all files in the QualCoding folder.
  */
 export async function listAppDataFiles(
   accessToken: string
 ): Promise<DriveFile[]> {
+  const folderId = await getOrCreateAppFolder(accessToken);
+
   const res = await fetch(
-    `${DRIVE_API}/files?spaces=appDataFolder&fields=files(id,name,modifiedTime,size)&pageSize=1000`,
+    `${DRIVE_API}/files?q='${folderId}' in parents and trashed=false&fields=files(id,name,modifiedTime,size)&pageSize=1000`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
 
@@ -35,7 +79,7 @@ export async function listAppDataFiles(
 }
 
 /**
- * Read a text file's content from appDataFolder.
+ * Read a text file's content.
  */
 export async function readFileContent(
   accessToken: string,
@@ -52,16 +96,18 @@ export async function readFileContent(
 }
 
 /**
- * Create a new text file in appDataFolder.
+ * Create a new text file in the QualCoding folder.
  */
 export async function createAppDataFile(
   accessToken: string,
   name: string,
   content: string
 ): Promise<DriveFile> {
+  const folderId = await getOrCreateAppFolder(accessToken);
+
   const metadata = {
     name,
-    parents: ["appDataFolder"],
+    parents: [folderId],
     mimeType: "application/json",
   };
 
@@ -87,7 +133,7 @@ export async function createAppDataFile(
 }
 
 /**
- * Update an existing file's content. Uses If-Match with ETag for safe writes.
+ * Update an existing file's content.
  */
 export async function updateFileContent(
   accessToken: string,
