@@ -11,8 +11,10 @@ import { DocumentList } from "@/components/layout/DocumentList";
 import { useUiStore } from "@/lib/stores/uiStore";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
+import { useProcessingQueue } from "@/hooks/useProcessingQueue";
 
 export default function ProjectsPage() {
+  useProcessingQueue();
   const [showCreate, setShowCreate] = useState(false);
   const [showUpload, setShowUpload] = useState(false);
   const currentProjectId = useUiStore((s) => s.currentProjectId);
