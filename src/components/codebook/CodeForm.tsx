@@ -38,9 +38,12 @@ export function CodeForm({
   const [definition, setDefinition] = useState("");
   const [color, setColor] = useState(randomColor());
   const [hexInput, setHexInput] = useState(color);
+  const [userPickedColor, setUserPickedColor] = useState(false);
 
-  // Auto-assign a shade of the parent's color when parent changes
+  // Auto-assign a shade of the parent's color when parent changes,
+  // unless the user has manually picked a color
   useEffect(() => {
+    if (userPickedColor) return;
     if (parentId) {
       const parent = codes.find((c) => c.id === parentId);
       if (parent) {
@@ -49,12 +52,8 @@ export function CodeForm({
         setColor(shade);
         setHexInput(shade);
       }
-    } else {
-      const newColor = randomColor();
-      setColor(newColor);
-      setHexInput(newColor);
     }
-  }, [parentId, codes]);
+  }, [parentId, codes, userPickedColor]);
 
   function handleHexChange(value: string) {
     setHexInput(value);
@@ -144,6 +143,7 @@ export function CodeForm({
                     onClick={() => {
                       setColor(c);
                       setHexInput(c);
+                      setUserPickedColor(true);
                     }}
                     className={`h-5 w-5 rounded-full border-2 ${
                       color === c ? "border-stone-900" : "border-transparent"
@@ -158,6 +158,7 @@ export function CodeForm({
                 onChange={(e) => {
                   setColor(e.target.value);
                   setHexInput(e.target.value);
+                  setUserPickedColor(true);
                 }}
                 className="h-6 w-6 cursor-pointer rounded border-0 p-0"
               />

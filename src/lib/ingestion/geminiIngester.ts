@@ -41,9 +41,11 @@ export async function processWithGemini(
 
   try {
     const fileSizeMB = asset.blob.size / (1024 * 1024);
+    console.log(`[gemini] File size: ${fileSizeMB.toFixed(1)}MB, mimeType: ${asset.mimeType}`);
     let transcribeBody: Record<string, string>;
 
     if (fileSizeMB <= 15) {
+      console.log("[gemini] Using inline base64 (small file)");
       // Small file: send as inline base64
       const buffer = await asset.blob.arrayBuffer();
       const base64 = btoa(
@@ -58,6 +60,7 @@ export async function processWithGemini(
         language,
       };
     } else {
+      console.log("[gemini] Using Files API upload (large file)");
       // Large file: upload first via Files API, then transcribe with URI
       const formData = new FormData();
       formData.append("file", asset.blob, "audio");
@@ -79,6 +82,7 @@ export async function processWithGemini(
       }
 
       const { uri } = await uploadRes.json();
+      console.log("[gemini] Upload complete, URI:", uri);
       transcribeBody = {
         fileUri: uri,
         mimeType: asset.mimeType,
@@ -86,6 +90,7 @@ export async function processWithGemini(
       };
     }
 
+    console.log("[gemini] Calling transcribe route...");
     // Call transcribe route (server-side generateContent)
     const transcribeRes = await fetch("/api/gemini/transcribe", {
       method: "POST",
