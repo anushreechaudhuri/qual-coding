@@ -91,6 +91,7 @@ export function AudioViewer({ document: doc }: { document: Document }) {
         </div>
       )}
       <SegmentList
+        document={doc}
         segments={doc.segments}
         activeSegmentIndex={activeSegmentIndex}
         onSeek={handleSeek}
