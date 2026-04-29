@@ -40,6 +40,12 @@ export type MemoTargetType = "project" | "document" | "code" | "quotation";
 
 export interface Project extends SyncableEntity {
   name: string;
+  /**
+   * Projects sharing a codebook have the same codebookGroupId.
+   * Defaults to the project's own ID. When synced, multiple projects
+   * point to the same group, and codes are queried by this ID.
+   */
+  codebookGroupId: string;
 }
 
 export interface AudioSegment {

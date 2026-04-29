@@ -3,24 +3,28 @@
 import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
-import { useCodebook } from "@/hooks/useCodebook";
+import { useCodebook, useCodebookGroupId } from "@/hooks/useCodebook";
 import { CodeTree } from "./CodeTree";
 import { CodeDetail } from "./CodeDetail";
 import { CodeForm } from "./CodeForm";
 import { CodebookImport } from "./CodebookImport";
 import { CodebookCopyFrom } from "./CodebookCopyFrom";
+import { CodebookSync } from "./CodebookSync";
 
 /**
  * Right-panel codebook section. Shows the code tree with option to
  * expand a selected code's detail view.
  */
 export function CodebookPanel({ projectId }: { projectId: string }) {
+  const codebookGroupId = useCodebookGroupId(projectId) ?? projectId;
   const codes = useCodebook(projectId);
   const [selectedCodeId, setSelectedCodeId] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showCopyFrom, setShowCopyFrom] = useState(false);
+  const [showSync, setShowSync] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const isSynced = codebookGroupId !== projectId;
 
   const selectedCode = codes.find((c) => c.id === selectedCodeId) ?? null;
 
@@ -42,15 +46,28 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-stone-100">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-stone-400">
-          Codebook
-        </span>
+        <div className="flex items-center gap-1.5">
+          <span className="text-[11px] font-medium uppercase tracking-wider text-stone-400">
+            Codebook
+          </span>
+          {isSynced && (
+            <span className="rounded bg-blue-50 px-1.5 py-0.5 text-[9px] font-medium text-blue-600">
+              synced
+            </span>
+          )}
+        </div>
         <div className="flex gap-2 text-xs text-stone-400">
           <button
             onClick={() => setShowCreate(true)}
             className="hover:text-stone-600"
           >
             + Add
+          </button>
+          <button
+            onClick={() => setShowSync(true)}
+            className="hover:text-stone-600"
+          >
+            Sync
           </button>
           <button
             onClick={() => setShowCopyFrom(true)}
@@ -106,7 +123,7 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
       {/* Modals */}
       {showCreate && (
         <CodeForm
-          projectId={projectId}
+          projectId={codebookGroupId}
           codes={codes}
           onClose={() => setShowCreate(false)}
         />
@@ -119,8 +136,15 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
       )}
       {showCopyFrom && (
         <CodebookCopyFrom
-          projectId={projectId}
+          projectId={codebookGroupId}
           onClose={() => setShowCopyFrom(false)}
+        />
+      )}
+      {showSync && (
+        <CodebookSync
+          projectId={projectId}
+          codebookGroupId={codebookGroupId}
+          onClose={() => setShowSync(false)}
         />
       )}
     </div>

@@ -37,8 +37,6 @@ export class QualCodingDatabase extends Dexie {
     super("QualCodingDB");
 
     this.version(2).stores({
-      // Compound index [projectId+purpose] enables queries like
-      // "all primary documents in project X"
       projects: "id, updatedAt, _dirty, deletedAt",
       documents:
         "id, projectId, status, [projectId+purpose], [projectId+status], updatedAt, _dirty, deletedAt",
@@ -49,6 +47,27 @@ export class QualCodingDatabase extends Dexie {
         "id, projectId, [targetType+targetId], updatedAt, _dirty, deletedAt",
       binaryAssets: "id, documentId, _dirty, deletedAt",
       syncMeta: "entityType",
+    });
+
+    // v3: add codebookGroupId to projects for synced codebooks
+    this.version(3).stores({
+      projects: "id, codebookGroupId, updatedAt, _dirty, deletedAt",
+      documents:
+        "id, projectId, status, [projectId+purpose], [projectId+status], updatedAt, _dirty, deletedAt",
+      codes: "id, projectId, [projectId+parentId], updatedAt, _dirty, deletedAt",
+      codings:
+        "id, projectId, documentId, codeId, [documentId+codeId], updatedAt, _dirty, deletedAt",
+      memos:
+        "id, projectId, [targetType+targetId], updatedAt, _dirty, deletedAt",
+      binaryAssets: "id, documentId, _dirty, deletedAt",
+      syncMeta: "entityType",
+    }).upgrade((tx) => {
+      // Set codebookGroupId = id for existing projects
+      return tx.table("projects").toCollection().modify((project) => {
+        if (!project.codebookGroupId) {
+          project.codebookGroupId = project.id;
+        }
+      });
     });
   }
 }

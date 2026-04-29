@@ -5,19 +5,27 @@ import { db } from "@/lib/db/schema";
 import type { Code } from "@/types";
 
 /**
- * Reactive query for all non-deleted codes in a project.
- * Returns codes organized for tree rendering (parents and children).
+ * Reactive query for all non-deleted codes in a project's codebook group.
+ * When projects share a synced codebook, they all query by the same
+ * codebookGroupId, so edits in one project appear in all linked projects.
  */
 export function useCodebook(projectId: string | null) {
   const codes = useLiveQuery(
-    () =>
-      projectId
-        ? db.codes
-            .where("projectId")
-            .equals(projectId)
-            .filter((c) => c.deletedAt === null)
-            .toArray()
-        : [],
+    async () => {
+      if (!projectId) return [];
+
+      // Get the project's codebookGroupId
+      const project = await db.projects.get(projectId);
+      if (!project) return [];
+
+      const groupId = project.codebookGroupId ?? projectId;
+
+      return db.codes
+        .where("projectId")
+        .equals(groupId)
+        .filter((c) => c.deletedAt === null)
+        .toArray();
+    },
     [projectId]
   );
 
@@ -25,8 +33,22 @@ export function useCodebook(projectId: string | null) {
 }
 
 /**
+ * Get the codebookGroupId for a project. Used when creating new codes
+ * to ensure they go into the shared codebook.
+ */
+export function useCodebookGroupId(projectId: string | null) {
+  return useLiveQuery(
+    async () => {
+      if (!projectId) return projectId;
+      const project = await db.projects.get(projectId);
+      return project?.codebookGroupId ?? projectId;
+    },
+    [projectId]
+  );
+}
+
+/**
  * Builds a tree structure from a flat list of codes.
- * Top-level codes have parentId === null.
  */
 export interface CodeTreeNode {
   code: Code;

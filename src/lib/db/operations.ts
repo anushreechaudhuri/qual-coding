@@ -66,7 +66,9 @@ function dirtyFields(): Partial<SyncableEntity> {
 export async function createProject(
   name: string
 ): Promise<Project> {
-  const project = withSyncFields({ name }) as Project;
+  const fields = withSyncFields({ name, codebookGroupId: "" });
+  fields.codebookGroupId = fields.id;
+  const project = fields as Project;
   await db.projects.add(project);
   return project;
 }
@@ -81,7 +83,7 @@ export async function listProjects(): Promise<Project[]> {
 
 export async function updateProject(
   id: string,
-  changes: Partial<Pick<Project, "name">>
+  changes: Partial<Pick<Project, "name" | "codebookGroupId">>
 ): Promise<void> {
   await db.projects.update(id, { ...changes, ...dirtyFields() });
 }
