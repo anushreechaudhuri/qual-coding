@@ -19,6 +19,8 @@ import type {
   Coding,
   Memo,
   BinaryAsset,
+  Speaker,
+  SpeakerScope,
   SyncableEntity,
 } from "@/types";
 
@@ -337,6 +339,71 @@ export async function getBinaryAsset(
   id: string
 ): Promise<BinaryAsset | undefined> {
   return db.binaryAssets.get(id);
+}
+
+// ---------------------------------------------------------------------------
+// Speakers
+// ---------------------------------------------------------------------------
+
+export async function createSpeaker(
+  name: string,
+  scope: SpeakerScope,
+  projectIds: string[]
+): Promise<Speaker> {
+  const speaker = withSyncFields({
+    name,
+    scope,
+    projectIds,
+    notes: "",
+  }) as Speaker;
+  await db.speakers.add(speaker);
+  return speaker;
+}
+
+export async function updateSpeaker(
+  id: string,
+  changes: Partial<Pick<Speaker, "name" | "scope" | "projectIds" | "notes">>
+): Promise<void> {
+  await db.speakers.update(id, { ...changes, ...dirtyFields() });
+}
+
+export async function listSpeakers(projectId?: string): Promise<Speaker[]> {
+  const all = await db.speakers
+    .filter((s) => s.deletedAt === null)
+    .toArray();
+
+  if (!projectId) return all;
+
+  return all.filter(
+    (s) => s.scope === "global" || s.projectIds.includes(projectId)
+  );
+}
+
+/**
+ * Auto-create speakers from audio transcription segments.
+ * Skips if a speaker with the same name already exists for this project.
+ */
+export async function ensureSpeakersFromSegments(
+  projectId: string,
+  speakerNames: string[]
+): Promise<void> {
+  const existing = await listSpeakers(projectId);
+  const existingNames = new Set(existing.map((s) => s.name.toLowerCase()));
+
+  for (const name of speakerNames) {
+    if (existingNames.has(name.toLowerCase())) continue;
+
+    // Common interviewer names → global scope
+    const isGlobal = ["interviewer", "anushree", "translator"].some(
+      (g) => name.toLowerCase().includes(g)
+    );
+
+    await createSpeaker(
+      name,
+      isGlobal ? "global" : "project",
+      [projectId]
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------

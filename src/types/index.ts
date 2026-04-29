@@ -122,6 +122,18 @@ export interface BinaryAsset extends SyncableEntity {
   driveFileId: string | null;
 }
 
+export type SpeakerScope = "project" | "global";
+
+export interface Speaker extends SyncableEntity {
+  name: string;
+  /** "project" = local to specific projects, "global" = shared across all */
+  scope: SpeakerScope;
+  /** Project IDs this speaker is associated with (for project-scoped speakers) */
+  projectIds: string[];
+  /** Optional notes about the speaker */
+  notes: string;
+}
+
 export interface SyncMeta {
   entityType: string;
   lastSyncedAt: Date;

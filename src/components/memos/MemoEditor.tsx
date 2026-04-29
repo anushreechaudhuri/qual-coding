@@ -202,7 +202,7 @@ function ToolbarButton({
 interface MentionItem {
   id: string;
   label: string;
-  type: "document" | "code" | "project";
+  type: "document" | "code" | "project" | "speaker";
 }
 
 interface MentionSuggestionProps {
@@ -218,7 +218,7 @@ async function searchMentionables(
   const q = query.toLowerCase();
   const results: MentionItem[] = [];
 
-  const [docs, codes, projects] = await Promise.all([
+  const [docs, codes, projects, speakers] = await Promise.all([
     db.documents
       .where("projectId")
       .equals(projectId)
@@ -230,16 +230,25 @@ async function searchMentionables(
       .filter((c) => c.deletedAt === null)
       .toArray(),
     db.projects.filter((p) => p.deletedAt === null).toArray(),
+    db.speakers
+      .filter((s) => s.deletedAt === null && (s.scope === "global" || s.projectIds.includes(projectId)))
+      .toArray(),
   ]);
 
-  for (const doc of docs) {
-    if (doc.title.toLowerCase().includes(q)) {
-      results.push({ id: doc.id, label: doc.title, type: "document" });
+  // Speakers first (most likely to be mentioned)
+  for (const speaker of speakers) {
+    if (speaker.name.toLowerCase().includes(q)) {
+      results.push({ id: speaker.id, label: speaker.name, type: "speaker" });
     }
   }
   for (const code of codes) {
     if (code.name.toLowerCase().includes(q)) {
       results.push({ id: code.id, label: code.name, type: "code" });
+    }
+  }
+  for (const doc of docs) {
+    if (doc.title.toLowerCase().includes(q)) {
+      results.push({ id: doc.id, label: doc.title, type: "document" });
     }
   }
   for (const project of projects) {
@@ -269,6 +278,7 @@ function renderItems(
   onSelect: ((item: MentionItem) => void) | null
 ) {
   const typeIcons: Record<string, string> = {
+    speaker: "🗣",
     document: "📄",
     code: "🏷",
     project: "📁",

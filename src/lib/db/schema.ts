@@ -21,6 +21,7 @@ import type {
   Coding,
   Memo,
   BinaryAsset,
+  Speaker,
   SyncMeta,
 } from "@/types";
 
@@ -31,6 +32,7 @@ export class QualCodingDatabase extends Dexie {
   codings!: EntityTable<Coding, "id">;
   memos!: EntityTable<Memo, "id">;
   binaryAssets!: EntityTable<BinaryAsset, "id">;
+  speakers!: EntityTable<Speaker, "id">;
   syncMeta!: EntityTable<SyncMeta, "entityType">;
 
   constructor() {
@@ -68,6 +70,21 @@ export class QualCodingDatabase extends Dexie {
           project.codebookGroupId = project.id;
         }
       });
+    });
+
+    // v4: add speakers table
+    this.version(4).stores({
+      projects: "id, codebookGroupId, updatedAt, _dirty, deletedAt",
+      documents:
+        "id, projectId, status, [projectId+purpose], [projectId+status], updatedAt, _dirty, deletedAt",
+      codes: "id, projectId, [projectId+parentId], updatedAt, _dirty, deletedAt",
+      codings:
+        "id, projectId, documentId, codeId, [documentId+codeId], updatedAt, _dirty, deletedAt",
+      memos:
+        "id, projectId, [targetType+targetId], updatedAt, _dirty, deletedAt",
+      binaryAssets: "id, documentId, _dirty, deletedAt",
+      speakers: "id, scope, *projectIds, updatedAt, _dirty, deletedAt",
+      syncMeta: "entityType",
     });
   }
 }

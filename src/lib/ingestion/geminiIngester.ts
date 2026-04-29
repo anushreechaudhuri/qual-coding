@@ -10,7 +10,7 @@
  */
 
 import { getApiKey } from "@/lib/settings";
-import { getBinaryAsset, updateDocument } from "@/lib/db/operations";
+import { getBinaryAsset, updateDocument, ensureSpeakersFromSegments } from "@/lib/db/operations";
 import { isApiError } from "@/types/api";
 import type { AudioSegment } from "@/types";
 
@@ -208,6 +208,12 @@ export async function processWithGemini(
       },
       errorMessage: null,
     });
+
+    // Auto-create speaker entities from the transcript
+    const doc = await import("@/lib/db/schema").then((m) => m.db.documents.get(documentId));
+    if (doc) {
+      await ensureSpeakersFromSegments(doc.projectId, knownSpeakers);
+    }
 
     console.log(`[gemini] Complete: ${allSegments.length} segments, ${knownSpeakers.length} speakers`);
   } catch (err) {
