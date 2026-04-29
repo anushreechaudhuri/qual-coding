@@ -4,33 +4,24 @@ import { useState } from "react";
 import { db } from "@/lib/db/schema";
 import type { Document } from "@/types";
 
-/**
- * Copy dropdown with format options and option to include code annotations.
- */
 export function CopyDropdown({ document: doc }: { document: Document }) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState<string | null>(null);
 
   async function handleCopy(format: string, withCodes: boolean) {
-    const text = await buildCopyText(doc, format, withCodes);
-
     try {
-      if (format === "html") {
-        await navigator.clipboard.write([
-          new ClipboardItem({
-            "text/html": new Blob([text], { type: "text/html" }),
-            "text/plain": new Blob([stripHtml(text)], { type: "text/plain" }),
-          }),
-        ]);
-      } else {
-        await navigator.clipboard.writeText(text);
-      }
-    } catch {
-      await navigator.clipboard.writeText(text);
-    }
+      const text = await buildCopyText(doc, format, withCodes);
 
-    setCopied(format + (withCodes ? "+codes" : ""));
-    setTimeout(() => { setCopied(null); setOpen(false); }, 1500);
+      // Use a fallback approach: try Clipboard API, fall back to textarea trick
+      const success = await copyToClipboard(text, format === "html");
+
+      if (success) {
+        setCopied(format + (withCodes ? "+codes" : ""));
+        setTimeout(() => { setCopied(null); setOpen(false); }, 1500);
+      }
+    } catch (err) {
+      console.error("Copy failed:", err);
+    }
   }
 
   if (copied) {
@@ -78,6 +69,48 @@ function CopyBtn({ label, onClick }: { label: string; onClick: () => void }) {
   );
 }
 
+/**
+ * Robust clipboard copy that falls back to the textarea trick
+ * when the Clipboard API isn't available or fails.
+ */
+async function copyToClipboard(text: string, asHtml: boolean): Promise<boolean> {
+  // Try Clipboard API first
+  try {
+    if (asHtml && navigator.clipboard.write) {
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "text/html": new Blob([text], { type: "text/html" }),
+          "text/plain": new Blob([stripHtml(text)], { type: "text/plain" }),
+        }),
+      ]);
+      return true;
+    }
+
+    if (navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Clipboard API failed, fall through to textarea fallback
+  }
+
+  // Fallback: textarea + execCommand
+  const textarea = document.createElement("textarea");
+  textarea.value = asHtml ? stripHtml(text) : text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-9999px";
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand("copy");
+    return true;
+  } catch {
+    return false;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 async function buildCopyText(
   doc: Document,
   format: string,
@@ -89,7 +122,6 @@ async function buildCopyText(
     return doc.content;
   }
 
-  // Fetch codings and codes for this document
   const codings = await db.codings
     .where("documentId")
     .equals(doc.id)
@@ -110,14 +142,9 @@ async function buildCopyText(
         end: c.endOffset,
       }));
 
-    return JSON.stringify({
-      title: doc.title,
-      content: doc.content,
-      codings: segments,
-    }, null, 2);
+    return JSON.stringify({ title: doc.title, content: doc.content, codings: segments }, null, 2);
   }
 
-  // Plain text with inline code tags: "some text {CodeName}"
   const sorted = codings.sort((a, b) => a.startOffset - b.startOffset);
   let result = "";
   let lastEnd = 0;
