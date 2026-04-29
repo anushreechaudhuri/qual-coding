@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
 import { AudioPlayer, parseTimestamp } from "./AudioPlayer";
@@ -61,9 +61,35 @@ export function AudioViewer({ document: doc }: { document: Document }) {
     setActiveSegmentIndex(index >= 0 ? index : null);
   }, [doc.segments]);
 
+  const [copied, setCopied] = useState(false);
+
+  const fullTranscript = useMemo(
+    () =>
+      doc.segments
+        .map((s) => `${s.speaker} · ${s.timestamp}\n${s.content}`)
+        .join("\n\n"),
+    [doc.segments]
+  );
+
+  async function handleCopyAll() {
+    await navigator.clipboard.writeText(fullTranscript);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
   return (
     <div>
       <AudioPlayer blobUrl={blobUrl} onTimeUpdate={handleTimeUpdate} />
+      {doc.segments.length > 0 && (
+        <div className="flex justify-end px-6 py-1 border-b border-stone-100">
+          <button
+            onClick={handleCopyAll}
+            className="rounded px-2.5 py-1 text-xs text-stone-400 hover:text-stone-600 hover:bg-stone-50"
+          >
+            {copied ? "Copied" : "Copy transcript"}
+          </button>
+        </div>
+      )}
       <SegmentList
         segments={doc.segments}
         activeSegmentIndex={activeSegmentIndex}
