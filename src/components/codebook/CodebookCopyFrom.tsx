@@ -22,6 +22,8 @@ export function CodebookCopyFrom({
   const [sourceProjectId, setSourceProjectId] = useState<string | null>(null);
   const [selectedCodeIds, setSelectedCodeIds] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [codeSearch, setCodeSearch] = useState("");
 
   const projects = useLiveQuery(
     () =>
@@ -138,17 +140,32 @@ export function CodebookCopyFrom({
             {!projects || projects.length === 0 ? (
               <p className="text-sm text-stone-400">No other projects found.</p>
             ) : (
-              <div className="max-h-48 overflow-y-auto space-y-1">
-                {projects.map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => setSourceProjectId(p.id)}
-                    className="flex w-full rounded px-3 py-2 text-left text-sm hover:bg-stone-50"
-                  >
-                    {p.name}
-                  </button>
-                ))}
-              </div>
+              <>
+                {projects.length > 3 && (
+                  <input
+                    autoFocus
+                    value={projectSearch}
+                    onChange={(e) => setProjectSearch(e.target.value)}
+                    placeholder="Search projects..."
+                    className="w-full rounded border border-stone-200 px-2 py-1.5 text-sm placeholder:text-stone-400 focus:border-stone-300 focus:outline-none"
+                  />
+                )}
+                <div className="max-h-48 overflow-y-auto space-y-1">
+                  {projects
+                    .filter((p) =>
+                      p.name.toLowerCase().includes(projectSearch.toLowerCase())
+                    )
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        onClick={() => setSourceProjectId(p.id)}
+                        className="flex w-full rounded px-3 py-2 text-left text-sm hover:bg-stone-50"
+                      >
+                        {p.name}
+                      </button>
+                    ))}
+                </div>
+              </>
             )}
             <div className="flex justify-end pt-2">
               <button
@@ -161,6 +178,15 @@ export function CodebookCopyFrom({
           </div>
         ) : (
           <div className="mt-4 space-y-3">
+            {(sourceCodes ?? []).length > 5 && (
+              <input
+                autoFocus
+                value={codeSearch}
+                onChange={(e) => setCodeSearch(e.target.value)}
+                placeholder="Search codes..."
+                className="w-full rounded border border-stone-200 px-2 py-1.5 text-sm placeholder:text-stone-400 focus:border-stone-300 focus:outline-none"
+              />
+            )}
             <div className="flex items-center justify-between">
               <p className="text-sm text-stone-600">
                 Select codes to import:
@@ -182,7 +208,15 @@ export function CodebookCopyFrom({
             </div>
 
             <div className="max-h-64 overflow-y-auto rounded border border-stone-200 divide-y divide-stone-50">
-              {parentCodes.map((parent) => (
+              {parentCodes
+                .filter((p) => {
+                  if (!codeSearch) return true;
+                  const q = codeSearch.toLowerCase();
+                  const children = childrenOf.get(p.id) ?? [];
+                  return p.name.toLowerCase().includes(q) ||
+                    children.some((c) => c.name.toLowerCase().includes(q));
+                })
+                .map((parent) => (
                 <div key={parent.id}>
                   <label className="flex items-center gap-2 px-3 py-2 hover:bg-stone-50 cursor-pointer">
                     <input
