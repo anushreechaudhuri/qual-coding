@@ -9,6 +9,7 @@ import { CreateProjectModal } from "@/components/projects/CreateProjectModal";
 import { UploadModal } from "@/components/upload/UploadModal";
 import { DocumentList } from "@/components/layout/DocumentList";
 import { DocumentViewer } from "@/components/viewer/DocumentViewer";
+import { CodebookPanel } from "@/components/codebook/CodebookPanel";
 import { useUiStore } from "@/lib/stores/uiStore";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
@@ -68,7 +69,11 @@ export default function ProjectsPage() {
           )
         }
         right={
-          currentProject ? <RightPlaceholder /> : <div />
+          currentProjectId ? (
+            <CodebookPanel projectId={currentProjectId} />
+          ) : (
+            <div />
+          )
         }
       />
 
@@ -153,21 +158,3 @@ function ProjectCenter({
   );
 }
 
-function RightPlaceholder() {
-  return (
-    <div className="p-4 space-y-4">
-      <div>
-        <span className="text-[11px] font-medium uppercase tracking-wider text-stone-400">
-          Codebook
-        </span>
-        <p className="mt-2 text-xs text-stone-400">Codebook panel (Unit 8)</p>
-      </div>
-      <div>
-        <span className="text-[11px] font-medium uppercase tracking-wider text-stone-400">
-          Summary
-        </span>
-        <p className="mt-2 text-xs text-stone-400">Summary panel (Unit 13)</p>
-      </div>
-    </div>
-  );
-}
