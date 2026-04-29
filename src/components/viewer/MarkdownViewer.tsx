@@ -68,7 +68,18 @@ export function MarkdownViewer({ document: doc }: { document: Document }) {
       </div>
 
       {mode === "read" ? (
-        <div className="font-serif text-stone-900 leading-relaxed prose prose-stone prose-sm max-w-none">
+        <div
+          className="font-serif text-stone-900 leading-relaxed prose prose-stone prose-sm max-w-none"
+          onMouseUp={() => {
+            const sel = window.getSelection();
+            if (sel && !sel.isCollapsed) {
+              setMode("code");
+            }
+          }}
+        >
+          <p className="text-[10px] text-stone-400 not-prose mb-2">
+            Select text to switch to Code mode for highlighting
+          </p>
           <ReactMarkdown>{doc.content}</ReactMarkdown>
           {doc.translationContent && (
             <div className="mt-6 pt-4 border-t border-stone-100">

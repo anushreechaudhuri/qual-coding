@@ -12,8 +12,9 @@ import type { Document, Code } from "@/types";
 
 /**
  * Wraps document content to enable text selection and code application.
- * On mouseup after selecting text, opens the CodePicker dropdown.
- * Highlights existing codings with colored backgrounds.
+ * On mouseup after selecting text, shows a temporary highlight and opens
+ * the CodePicker dropdown. The pending selection stays visible until the
+ * user picks a code or dismisses the picker.
  */
 export function TextAnnotator({
   document: doc,
@@ -36,7 +37,6 @@ export function TextAnnotator({
 
   const content = isTranslation ? doc.translationContent : doc.content;
 
-  // Get codings for this document on this content track
   const codings = useLiveQuery(
     () =>
       db.codings
@@ -63,7 +63,6 @@ export function TextAnnotator({
     const offsets = selectionToOffsets(selection, containerRef.current);
     if (!offsets) return;
 
-    // Position the picker near the selection
     const range = selection.getRangeAt(0);
     const rect = range.getBoundingClientRect();
 
@@ -72,6 +71,8 @@ export function TextAnnotator({
       x: Math.min(rect.left, window.innerWidth - 240),
       y: rect.bottom + 4,
     });
+
+    // Don't clear browser selection yet so the user sees what they selected
   }, []);
 
   const handleCodeSelect = useCallback(
@@ -86,13 +87,11 @@ export function TextAnnotator({
         isTranslation: isTranslation ?? false,
       });
 
-      // Track recently used codes
       setRecentCodeIds((prev) => {
         const filtered = prev.filter((id) => id !== codeId);
         return [codeId, ...filtered].slice(0, 5);
       });
 
-      // Clear selection
       window.getSelection()?.removeAllRanges();
       setPendingSelection(null);
       setPickerPosition(null);
@@ -100,8 +99,13 @@ export function TextAnnotator({
     [pendingSelection, applyCoding, isTranslation]
   );
 
+  const dismissPicker = useCallback(() => {
+    window.getSelection()?.removeAllRanges();
+    setPendingSelection(null);
+    setPickerPosition(null);
+  }, []);
+
   const handleCodingClick = useCallback((codingId: string) => {
-    // Could open a detail popover in the future
     console.log("Coding clicked:", codingId);
   }, []);
 
@@ -120,6 +124,7 @@ export function TextAnnotator({
           codings={codings ?? []}
           codeMap={codeMap}
           onCodingClick={handleCodingClick}
+          pendingSelection={pendingSelection}
         />
       </div>
 
@@ -128,23 +133,14 @@ export function TextAnnotator({
           codes={codes}
           recentCodeIds={recentCodeIds}
           onSelect={handleCodeSelect}
-          onClose={() => {
-            setPendingSelection(null);
-            setPickerPosition(null);
-          }}
+          onClose={dismissPicker}
           position={pickerPosition}
         />
       )}
 
       {pickerPosition && codes.length === 0 && (
         <>
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => {
-              setPendingSelection(null);
-              setPickerPosition(null);
-            }}
-          />
+          <div className="fixed inset-0 z-40" onClick={dismissPicker} />
           <div
             className="fixed z-50 rounded-md border border-stone-200 bg-white p-3 shadow-lg"
             style={{ left: pickerPosition.x, top: pickerPosition.y }}
