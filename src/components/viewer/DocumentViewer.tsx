@@ -87,11 +87,8 @@ export function DocumentViewer({ document: doc }: { document: Document }) {
   return (
     <div className="flex flex-col h-full overflow-y-auto">
       <DocumentHeader document={doc} />
-      {isAudio ? (
-        <AudioViewer document={doc} />
-      ) : (
-        <MarkdownViewer document={doc} />
-      )}
+      {isAudio && <AudioViewer document={doc} />}
+      <MarkdownViewer document={doc} />
     </div>
   );
 }

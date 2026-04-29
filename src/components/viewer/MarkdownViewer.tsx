@@ -28,6 +28,8 @@ export function MarkdownViewer({ document: doc }: { document: Document }) {
   const [editContent, setEditContent] = useState(doc.content);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showSearch, setShowSearch] = useState(false);
 
   const { pushUndo, undo, redo, canUndo, canRedo } = useUndoStore();
 
@@ -193,9 +195,46 @@ export function MarkdownViewer({ document: doc }: { document: Document }) {
           {saveResult && (
             <span className="text-[10px] text-green-600">{saveResult}</span>
           )}
+          <button
+            onClick={() => setShowSearch(!showSearch)}
+            className="rounded px-2 py-1 text-xs text-stone-400 hover:text-stone-600 hover:bg-stone-50"
+            title="Search (Cmd+F)"
+          >
+            Search
+          </button>
           <CopyDropdown document={doc} />
         </div>
       </div>
+
+      {/* Search bar */}
+      {showSearch && (
+        <div className="flex items-center gap-2 mb-3 px-1">
+          <input
+            autoFocus
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search in document..."
+            className="flex-1 rounded border border-stone-200 px-3 py-1.5 text-xs focus:border-stone-400 focus:outline-none"
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setShowSearch(false);
+                setSearchQuery("");
+              }
+            }}
+          />
+          {searchQuery && (
+            <span className="text-[10px] text-stone-400">
+              {(doc.content.match(new RegExp(searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi")) || []).length} matches
+            </span>
+          )}
+          <button
+            onClick={() => { setShowSearch(false); setSearchQuery(""); }}
+            className="text-xs text-stone-400 hover:text-stone-600"
+          >
+            ×
+          </button>
+        </div>
+      )}
 
       {/* Read mode */}
       {mode === "read" && (
