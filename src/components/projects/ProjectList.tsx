@@ -26,6 +26,7 @@ export function ProjectList({
     []
   );
 
+  const [collapsed, setCollapsed] = useState(false);
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -69,9 +70,13 @@ export function ProjectList({
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between px-4 py-2">
-        <span className="text-[11px] font-medium uppercase tracking-wider text-stone-400">
+        <button
+          onClick={() => setCollapsed(!collapsed)}
+          className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider text-stone-400 hover:text-stone-600"
+        >
+          <span className="text-[9px]">{collapsed ? "▶" : "▼"}</span>
           Projects
-        </span>
+        </button>
         <button
           onClick={onCreateClick}
           className="text-xs text-stone-400 hover:text-stone-600"
@@ -81,7 +86,8 @@ export function ProjectList({
         </button>
       </div>
 
-      <ul className="space-y-px">
+      {!collapsed && (
+        <ul className="space-y-px">
         {projects.map((project) => (
           <li key={project.id}>
             {renamingId === project.id ? (
@@ -156,6 +162,7 @@ export function ProjectList({
           </li>
         ))}
       </ul>
+      )}
     </div>
   );
 }

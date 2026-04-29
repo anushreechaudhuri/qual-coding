@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
 import { deleteDocument } from "@/lib/db/operations";
@@ -38,6 +39,17 @@ export function DocumentList({
     [projectId]
   );
 
+  const [collapsedSections, setCollapsedSections] = useState<Set<string>>(new Set());
+
+  function toggleSection(purpose: string) {
+    setCollapsedSections((prev) => {
+      const next = new Set(prev);
+      if (next.has(purpose)) next.delete(purpose);
+      else next.add(purpose);
+      return next;
+    });
+  }
+
   if (!documents) return null;
 
   const grouped = groupByPurpose(documents);
@@ -47,13 +59,18 @@ export function DocumentList({
       {PURPOSE_ORDER.map((purpose) => {
         const docs = grouped[purpose] ?? [];
         if (docs.length === 0 && purpose !== "primary") return null;
+        const isCollapsed = collapsedSections.has(purpose);
 
         return (
           <div key={purpose} className="mb-3">
             <div className="flex items-center justify-between px-4 py-1">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-stone-400">
+              <button
+                onClick={() => toggleSection(purpose)}
+                className="flex items-center gap-1 text-[11px] font-medium uppercase tracking-wider text-stone-400 hover:text-stone-600"
+              >
+                <span className="text-[9px]">{isCollapsed ? "▶" : "▼"}</span>
                 {PURPOSE_LABELS[purpose]} &middot; {docs.length}
-              </span>
+              </button>
               {purpose === "primary" && (
                 <button
                   onClick={onUploadClick}
@@ -65,7 +82,7 @@ export function DocumentList({
               )}
             </div>
 
-            {docs.length === 0 ? (
+            {isCollapsed ? null : docs.length === 0 ? (
               <button
                 onClick={onUploadClick}
                 className="mx-4 mt-1 w-[calc(100%-2rem)] rounded border border-dashed border-stone-200 py-2 text-xs text-stone-400 hover:border-stone-300 hover:text-stone-500"
