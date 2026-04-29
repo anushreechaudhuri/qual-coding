@@ -20,7 +20,7 @@ export function HighlightLayer({
   text: string;
   codings: Coding[];
   codeMap: Map<string, Code>;
-  onCodingClick: (codingId: string) => void;
+  onCodingClick: (codingId: string, event: React.MouseEvent) => void;
   pendingSelection?: { startOffset: number; endOffset: number } | null;
 }) {
   const segments = useMemo(
@@ -65,7 +65,7 @@ export function HighlightLayer({
         return (
           <span
             key={i}
-            onClick={() => onCodingClick(primaryCodingId)}
+            onClick={(e) => onCodingClick(primaryCodingId, e)}
             className="cursor-pointer rounded-sm"
             style={{
               backgroundColor: isPending ? "#fde68a" : `${color}30`,

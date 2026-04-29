@@ -4,18 +4,13 @@ import { useRef, useCallback, useState } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
 import { selectionToOffsets } from "@/lib/coding/offsetUtils";
+import { deleteCoding } from "@/lib/db/operations";
 import { useCodebook } from "@/hooks/useCodebook";
 import { useCodingActions } from "@/hooks/useCodingActions";
 import { HighlightLayer } from "./HighlightLayer";
 import { CodePicker } from "./CodePicker";
-import type { Document, Code } from "@/types";
+import type { Document, Code, Coding } from "@/types";
 
-/**
- * Wraps document content to enable text selection and code application.
- * On mouseup after selecting text, shows a temporary highlight and opens
- * the CodePicker dropdown. The pending selection stays visible until the
- * user picks a code or dismisses the picker.
- */
 export function TextAnnotator({
   document: doc,
   isTranslation,
@@ -31,10 +26,14 @@ export function TextAnnotator({
     text: string;
   } | null>(null);
   const [recentCodeIds, setRecentCodeIds] = useState<string[]>([]);
+  const [hoveredCoding, setHoveredCoding] = useState<{
+    coding: Coding;
+    code: Code | undefined;
+    rect: DOMRect;
+  } | null>(null);
 
   const codes = useCodebook(doc.projectId);
   const { applyCoding } = useCodingActions(doc);
-
   const content = isTranslation ? doc.translationContent : doc.content;
 
   const codings = useLiveQuery(
@@ -56,40 +55,55 @@ export function TextAnnotator({
     codeMap.set(code.id, code);
   }
 
-  const handleMouseUp = useCallback(() => {
+  const handleMouseUp = useCallback((e: React.MouseEvent) => {
+    // Ignore clicks on the tooltip
+    if ((e.target as HTMLElement).closest("[data-coding-tooltip]")) return;
+
     const selection = window.getSelection();
     if (!selection || !containerRef.current) return;
 
     const offsets = selectionToOffsets(selection, containerRef.current);
-    if (!offsets) return;
+    if (!offsets) {
+      // Clicked without selecting: clear pending
+      setPendingSelection(null);
+      setPickerPosition(null);
+      return;
+    }
+
+    // Ignore accidental select-all (more than 80% of content)
+    if (content && offsets.endOffset - offsets.startOffset > content.length * 0.8) {
+      window.getSelection()?.removeAllRanges();
+      return;
+    }
 
     const range = selection.getRangeAt(0);
     const rect = range.getBoundingClientRect();
 
     setPendingSelection(offsets);
     setPickerPosition({
-      x: Math.min(rect.left, window.innerWidth - 240),
+      x: Math.min(rect.left, window.innerWidth - 220),
       y: rect.bottom + 4,
     });
-
-    // Don't clear browser selection yet so the user sees what they selected
-  }, []);
+    setHoveredCoding(null);
+  }, [content]);
 
   const handleCodeSelect = useCallback(
-    async (codeId: string) => {
-      if (!pendingSelection) return;
+    async (selectedCodeIds: string[]) => {
+      if (!pendingSelection || selectedCodeIds.length === 0) return;
 
-      await applyCoding({
-        codeId,
-        startOffset: pendingSelection.startOffset,
-        endOffset: pendingSelection.endOffset,
-        quotedText: pendingSelection.text,
-        isTranslation: isTranslation ?? false,
-      });
+      for (const codeId of selectedCodeIds) {
+        await applyCoding({
+          codeId,
+          startOffset: pendingSelection.startOffset,
+          endOffset: pendingSelection.endOffset,
+          quotedText: pendingSelection.text,
+          isTranslation: isTranslation ?? false,
+        });
+      }
 
       setRecentCodeIds((prev) => {
-        const filtered = prev.filter((id) => id !== codeId);
-        return [codeId, ...filtered].slice(0, 5);
+        const filtered = prev.filter((id) => !selectedCodeIds.includes(id));
+        return [...selectedCodeIds, ...filtered].slice(0, 5);
       });
 
       window.getSelection()?.removeAllRanges();
@@ -105,9 +119,19 @@ export function TextAnnotator({
     setPickerPosition(null);
   }, []);
 
-  const handleCodingClick = useCallback((codingId: string) => {
-    console.log("Coding clicked:", codingId);
-  }, []);
+  const handleCodingClick = useCallback(
+    (codingId: string, event: React.MouseEvent) => {
+      const coding = (codings ?? []).find((c) => c.id === codingId);
+      if (!coding) return;
+      const code = codeMap.get(coding.codeId);
+      setHoveredCoding({
+        coding,
+        code,
+        rect: (event.target as HTMLElement).getBoundingClientRect(),
+      });
+    },
+    [codings, codeMap]
+  );
 
   if (!content) return null;
 
@@ -128,6 +152,7 @@ export function TextAnnotator({
         />
       </div>
 
+      {/* Code picker (multi-select) */}
       {pickerPosition && codes.length > 0 && (
         <CodePicker
           codes={codes}
@@ -151,6 +176,94 @@ export function TextAnnotator({
           </div>
         </>
       )}
+
+      {/* Coding detail tooltip */}
+      {hoveredCoding && (
+        <CodingTooltip
+          coding={hoveredCoding.coding}
+          code={hoveredCoding.code}
+          allCodings={(codings ?? []).filter(
+            (c) =>
+              c.startOffset === hoveredCoding.coding.startOffset &&
+              c.endOffset === hoveredCoding.coding.endOffset
+          )}
+          codeMap={codeMap}
+          rect={hoveredCoding.rect}
+          onDelete={async (id) => {
+            await deleteCoding(id);
+            setHoveredCoding(null);
+          }}
+          onClose={() => setHoveredCoding(null)}
+        />
+      )}
+    </>
+  );
+}
+
+function CodingTooltip({
+  coding,
+  code,
+  allCodings,
+  codeMap,
+  rect,
+  onDelete,
+  onClose,
+}: {
+  coding: Coding;
+  code: Code | undefined;
+  allCodings: Coding[];
+  codeMap: Map<string, Code>;
+  rect: DOMRect;
+  onDelete: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div
+        data-coding-tooltip
+        className="fixed z-50 w-52 rounded-md border border-stone-200 bg-white p-2 shadow-lg"
+        style={{
+          left: Math.min(rect.left, window.innerWidth - 220),
+          top: rect.bottom + 4,
+        }}
+      >
+        <div className="text-[10px] text-stone-400 mb-1">
+          Applied codes ({allCodings.length}):
+        </div>
+        <div className="space-y-1">
+          {allCodings.map((c) => {
+            const codeObj = codeMap.get(c.codeId);
+            return (
+              <div
+                key={c.id}
+                className="flex items-center justify-between rounded px-1.5 py-1 hover:bg-stone-50"
+              >
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className="h-2 w-2 rounded-sm"
+                    style={{ backgroundColor: codeObj?.color ?? "#78716c" }}
+                  />
+                  <span className="text-xs text-stone-700">
+                    {codeObj?.name ?? "Unknown"}
+                  </span>
+                </div>
+                <button
+                  onClick={() => onDelete(c.id)}
+                  className="text-[10px] text-stone-400 hover:text-red-500"
+                >
+                  remove
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-1.5 pt-1.5 border-t border-stone-100">
+          <p className="text-[10px] text-stone-400 line-clamp-2">
+            &ldquo;{coding.quotedText}&rdquo;
+          </p>
+        </div>
+      </div>
     </>
   );
 }
