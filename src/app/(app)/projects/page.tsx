@@ -8,6 +8,7 @@ import { ProjectList } from "@/components/projects/ProjectList";
 import { CreateProjectModal } from "@/components/projects/CreateProjectModal";
 import { UploadModal } from "@/components/upload/UploadModal";
 import { DocumentList } from "@/components/layout/DocumentList";
+import { DocumentViewer } from "@/components/viewer/DocumentViewer";
 import { useUiStore } from "@/lib/stores/uiStore";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
@@ -56,11 +57,7 @@ export default function ProjectsPage() {
         }
         center={
           currentDocument ? (
-            <DocumentPlaceholder
-              title={currentDocument.title}
-              status={currentDocument.status}
-              content={currentDocument.content}
-            />
+            <DocumentViewer document={currentDocument} />
           ) : currentProject ? (
             <ProjectCenter
               name={currentProject.name}
@@ -152,62 +149,6 @@ function ProjectCenter({
       >
         Upload a document
       </button>
-    </div>
-  );
-}
-
-function DocumentPlaceholder({
-  title,
-  status,
-  content,
-}: {
-  title: string;
-  status: string;
-  content: string;
-}) {
-  if (status === "pending") {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-stone-300 border-t-stone-600" />
-        <p className="text-sm text-stone-500">
-          Waiting to process: {title}
-        </p>
-        <p className="text-xs text-stone-400">
-          Will process when API keys are configured and connectivity is available.
-        </p>
-      </div>
-    );
-  }
-
-  if (status === "processing") {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-        <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
-        <p className="text-sm text-stone-500">Processing: {title}</p>
-      </div>
-    );
-  }
-
-  if (status === "error") {
-    return (
-      <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-        <p className="text-sm text-red-600">Processing failed: {title}</p>
-        <p className="text-xs text-stone-400">
-          Check your API keys in Settings and try again.
-        </p>
-      </div>
-    );
-  }
-
-  // status === "ready": show content preview
-  return (
-    <div className="p-6 max-w-2xl mx-auto">
-      <h2 className="text-lg font-semibold text-stone-900 mb-4 font-serif">
-        {title}
-      </h2>
-      <div className="prose prose-stone prose-sm font-serif whitespace-pre-wrap">
-        {content || <span className="text-stone-400">No content</span>}
-      </div>
     </div>
   );
 }
