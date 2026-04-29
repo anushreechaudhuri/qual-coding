@@ -19,7 +19,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     Google({
       authorization: {
         params: {
-          scope: "openid email profile https://www.googleapis.com/auth/drive.appdata",
+          scope: process.env.ENABLE_DRIVE_SYNC === "true"
+            ? "openid email profile https://www.googleapis.com/auth/drive.appdata"
+            : "openid email profile",
           access_type: "offline",
           prompt: "consent",
         },
