@@ -29,6 +29,7 @@ export function MemoEditor({
   const [saving, setSaving] = useState(false);
 
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [
       StarterKit,
       Placeholder.configure({
