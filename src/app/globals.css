@@ -16,3 +16,11 @@ body {
   background: var(--background);
   color: var(--foreground);
 }
+
+/* Visible selection highlight while dragging to select text for coding */
+[data-content-container] ::selection {
+  background-color: #fde68a;
+}
+[data-content-container] ::-moz-selection {
+  background-color: #fde68a;
+}
