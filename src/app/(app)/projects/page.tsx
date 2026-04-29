@@ -126,7 +126,7 @@ function Header({
           Settings
         </Link>
         <button
-          onClick={() => signOut({ callbackUrl: "/" })}
+          onClick={() => signOut({ callbackUrl: "/", redirect: true })}
           className="hover:text-stone-700"
         >
           Sign out
