@@ -20,6 +20,7 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
   const [showCreate, setShowCreate] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [showCopyFrom, setShowCopyFrom] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const selectedCode = codes.find((c) => c.id === selectedCodeId) ?? null;
 
@@ -66,10 +67,29 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
         </div>
       </div>
 
+      {/* Search */}
+      {codes.length > 5 && (
+        <div className="px-3 py-1.5 border-b border-stone-100">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search codes..."
+            className="w-full rounded border border-stone-200 bg-stone-50 px-2 py-1 text-xs text-stone-700 placeholder:text-stone-400 focus:border-stone-300 focus:outline-none"
+          />
+        </div>
+      )}
+
       {/* Code tree */}
       <div className="flex-1 overflow-y-auto">
         <CodeTree
-          codes={codes}
+          codes={searchQuery
+            ? codes.filter((c) =>
+                c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                c.definition.toLowerCase().includes(searchQuery.toLowerCase())
+              )
+            : codes
+          }
           selectedCodeId={selectedCodeId}
           onSelect={setSelectedCodeId}
           codingCounts={codingCounts ?? {}}
