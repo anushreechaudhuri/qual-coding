@@ -165,7 +165,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ segments });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Transcription failed";
-    console.error("[gemini/transcribe] Exception:", message);
+    const cause = err instanceof Error ? (err as NodeJS.ErrnoException).cause ?? err.stack : "";
+    console.error("[gemini/transcribe] Exception:", message, "Cause:", cause);
 
     if (message.includes("aborted") || message.includes("abort")) {
       return NextResponse.json(

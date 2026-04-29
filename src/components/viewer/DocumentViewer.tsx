@@ -3,6 +3,7 @@
 import type { Document } from "@/types";
 import { updateDocument } from "@/lib/db/operations";
 import { processNextPending } from "@/lib/ingestion/processingQueue";
+import { estimateProcessing } from "@/lib/ingestion/estimates";
 import { DocumentHeader } from "./DocumentHeader";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { AudioViewer } from "./AudioViewer";
@@ -28,10 +29,19 @@ export function DocumentViewer({ document: doc }: { document: Document }) {
   }
 
   if (doc.status === "processing") {
+    const est = estimateProcessing(
+      doc.metadata.fileSize || 0,
+      doc.fileType
+    );
     return (
       <div className="flex h-full flex-col items-center justify-center gap-2">
         <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-300 border-t-blue-600" />
         <p className="text-sm text-stone-500">Processing: {doc.title}</p>
+        <div className="text-xs text-stone-400 space-y-0.5 text-center">
+          <p>Estimated time: {est.timeRange}</p>
+          <p>Estimated cost: {est.costRange}</p>
+          <p className="text-[10px]">{est.details}</p>
+        </div>
       </div>
     );
   }
