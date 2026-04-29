@@ -1,16 +1,12 @@
 /**
- * API route proxy for Gemini audio transcription.
+ * API route for Gemini audio transcription.
  *
- * Accepts either:
- *   - fileUri (from the /api/gemini/upload step, for large files)
- *   - fileBase64 + mimeType (for small files, inline data)
- *
- * Calls generateContent server-side to avoid browser fetch issues
- * with long-running Gemini requests.
+ * Uses raw fetch instead of the SDK to control timeouts for long
+ * audio processing. Accepts either a fileUri (for pre-uploaded large
+ * files) or inline base64 data (for small files).
  */
 
 import { NextRequest, NextResponse } from "next/server";
-import { GoogleGenerativeAI, type Schema, SchemaType } from "@google/generative-ai";
 import { TranscriptionResponseSchema } from "@/types/gemini";
 import type { ApiErrorResponse } from "@/types/api";
 
@@ -26,19 +22,19 @@ const TRANSCRIPTION_PROMPT = `You are a transcription assistant for qualitative 
 
 Be thorough and accurate. These are research recordings where exact wording matters for qualitative analysis.`;
 
-const RESPONSE_SCHEMA: Schema = {
-  type: SchemaType.OBJECT,
+const RESPONSE_SCHEMA = {
+  type: "OBJECT",
   properties: {
     segments: {
-      type: SchemaType.ARRAY,
+      type: "ARRAY",
       items: {
-        type: SchemaType.OBJECT,
+        type: "OBJECT",
         properties: {
-          speaker: { type: SchemaType.STRING },
-          timestamp: { type: SchemaType.STRING },
-          content: { type: SchemaType.STRING },
-          language: { type: SchemaType.STRING },
-          translation: { type: SchemaType.STRING },
+          speaker: { type: "STRING" },
+          timestamp: { type: "STRING" },
+          content: { type: "STRING" },
+          language: { type: "STRING" },
+          translation: { type: "STRING" },
         },
         required: ["speaker", "timestamp", "content", "language", "translation"],
       },
@@ -67,37 +63,94 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-      },
-    });
-
     const prompt =
       TRANSCRIPTION_PROMPT +
       `\n\nThe primary language of this recording is ${language}. Pay special attention to accurate transcription in this language.`;
 
-    // Build the file part: either a URI reference or inline base64
-    const filePart = fileUri
-      ? { fileData: { mimeType: mimeType || "audio/mpeg", fileUri } }
-      : { inlineData: { mimeType, data: fileBase64 } };
+    // Build the request parts
+    const parts: Record<string, unknown>[] = [{ text: prompt }];
 
-    const result = await model.generateContent([prompt, filePart]);
+    if (fileUri) {
+      parts.push({ fileData: { mimeType: mimeType || "audio/mpeg", fileUri } });
+    } else {
+      parts.push({ inlineData: { mimeType, data: fileBase64 } });
+    }
 
-    const responseText = result.response.text();
+    const requestBody = {
+      contents: [{ parts }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA,
+      },
+    };
+
+    console.log("[gemini/transcribe] Calling generateContent...", {
+      hasFileUri: !!fileUri,
+      hasInlineData: !!fileBase64,
+      mimeType,
+      language,
+    });
+
+    // Use raw fetch with a 5-minute timeout (AbortController)
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 280_000);
+
+    const geminiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      }
+    );
+
+    clearTimeout(timeout);
+
+    if (!geminiRes.ok) {
+      const errText = await geminiRes.text();
+      console.error("[gemini/transcribe] API error:", geminiRes.status, errText);
+
+      if (geminiRes.status === 401 || geminiRes.status === 403) {
+        return NextResponse.json(
+          { error: "Invalid Gemini API key", code: "auth", retryable: false } satisfies ApiErrorResponse,
+          { status: 401 }
+        );
+      }
+      if (geminiRes.status === 429) {
+        return NextResponse.json(
+          { error: "Gemini rate limit exceeded. Try again in a few minutes.", code: "rate_limit", retryable: true } satisfies ApiErrorResponse,
+          { status: 429 }
+        );
+      }
+      return NextResponse.json(
+        { error: `Gemini error (${geminiRes.status}): ${errText.slice(0, 300)}`, code: "upstream_error", retryable: true } satisfies ApiErrorResponse,
+        { status: 502 }
+      );
+    }
+
+    const geminiResult = await geminiRes.json();
+    console.log("[gemini/transcribe] Response received, parsing...");
+
+    // Extract text from the Gemini response structure
+    const responseText =
+      geminiResult.candidates?.[0]?.content?.parts?.[0]?.text;
+
+    if (!responseText) {
+      console.error("[gemini/transcribe] No text in response:", JSON.stringify(geminiResult).slice(0, 500));
+      return NextResponse.json(
+        { error: "Gemini returned no transcription text", code: "upstream_error", retryable: true } satisfies ApiErrorResponse,
+        { status: 502 }
+      );
+    }
+
     const parsed = JSON.parse(responseText);
     const validated = TranscriptionResponseSchema.safeParse(parsed);
 
     if (!validated.success) {
+      console.error("[gemini/transcribe] Schema validation failed:", validated.error.message);
       return NextResponse.json(
-        {
-          error: "Gemini response did not match expected segment format",
-          code: "validation",
-          retryable: true,
-        } satisfies ApiErrorResponse,
+        { error: "Gemini response format mismatch", code: "validation", retryable: true } satisfies ApiErrorResponse,
         { status: 502 }
       );
     }
@@ -108,21 +161,16 @@ export async function POST(req: NextRequest) {
       index: i,
     }));
 
+    console.log(`[gemini/transcribe] Success: ${segments.length} segments`);
     return NextResponse.json({ segments });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Transcription failed";
+    console.error("[gemini/transcribe] Exception:", message);
 
-    if (message.includes("API_KEY_INVALID") || message.includes("401")) {
+    if (message.includes("aborted") || message.includes("abort")) {
       return NextResponse.json(
-        { error: "Invalid Gemini API key", code: "auth", retryable: false } satisfies ApiErrorResponse,
-        { status: 401 }
-      );
-    }
-
-    if (message.includes("429") || message.includes("RATE_LIMIT")) {
-      return NextResponse.json(
-        { error: "Gemini rate limit exceeded", code: "rate_limit", retryable: true } satisfies ApiErrorResponse,
-        { status: 429 }
+        { error: "Transcription timed out. The audio file may be too long. Try a shorter recording or split the file.", code: "upstream_error", retryable: true } satisfies ApiErrorResponse,
+        { status: 504 }
       );
     }
 
