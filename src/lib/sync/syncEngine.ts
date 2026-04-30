@@ -59,22 +59,31 @@ export async function runSync(accessToken: string): Promise<void> {
     return;
   }
 
-  // Web Locks API ensures only one tab syncs at a time
-  if ("locks" in navigator) {
-    try {
-      await navigator.locks.request(
-        "qual-coding-drive-sync",
-        { ifAvailable: true },
-        async (lock) => {
-          if (!lock) return; // Another tab holds the lock
-          await performSync(accessToken);
-        }
-      );
-    } catch {
+  try {
+    // Web Locks API ensures only one tab syncs at a time
+    if ("locks" in navigator) {
+      try {
+        await navigator.locks.request(
+          "qual-coding-drive-sync",
+          { ifAvailable: true },
+          async (lock) => {
+            if (!lock) return;
+            await performSync(accessToken);
+          }
+        );
+      } catch {
+        await performSync(accessToken);
+      }
+    } else {
       await performSync(accessToken);
     }
-  } else {
-    await performSync(accessToken);
+  } catch (err) {
+    // Catch any unhandled errors to prevent crashing the page
+    console.warn("[sync] Unhandled sync error:", err instanceof Error ? err.message : err);
+    setState({
+      status: "error",
+      error: "Sync error, will retry",
+    });
   }
 }
 
