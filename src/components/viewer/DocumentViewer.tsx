@@ -7,6 +7,7 @@ import { estimateProcessing } from "@/lib/ingestion/estimates";
 import { DocumentHeader } from "./DocumentHeader";
 import { MarkdownViewer } from "./MarkdownViewer";
 import { AudioViewer } from "./AudioViewer";
+import { TranscriptView } from "./TranscriptView";
 
 /**
  * Routes to the correct viewer based on document type.
@@ -88,7 +89,11 @@ export function DocumentViewer({ document: doc }: { document: Document }) {
     <div className="flex flex-col h-full overflow-y-auto">
       <DocumentHeader document={doc} />
       {isAudio && <AudioViewer document={doc} />}
-      <MarkdownViewer document={doc} />
+      {isAudio ? (
+        <TranscriptView document={doc} />
+      ) : (
+        <MarkdownViewer document={doc} />
+      )}
     </div>
   );
 }
