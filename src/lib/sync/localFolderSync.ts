@@ -114,10 +114,45 @@ export async function syncToFolder(handle: FileSystemDirectoryHandle): Promise<{
     fileCount++;
   }
 
+  // Export binary assets (audio files, PDFs) as actual files
+  const binaryFolder = await appFolder.getDirectoryHandle("files", { create: true });
+  const binaryAssets = await db.binaryAssets.filter((b) => b.deletedAt === null).toArray();
+
+  for (const asset of binaryAssets) {
+    if (!asset.blob || asset.blob.size === 0) continue;
+    const ext = asset.mimeType.split("/")[1]?.replace("mpeg", "mp3").replace("mp4", "m4a") ?? "bin";
+    const fileName = `${asset.id}.${ext}`;
+    try {
+      const file = await binaryFolder.getFileHandle(fileName, { create: true });
+      const writable = await file.createWritable();
+      await writable.write(asset.blob);
+      await writable.close();
+      totalSize += asset.blob.size;
+      fileCount++;
+    } catch (err) {
+      console.warn(`[sync] Failed to write binary ${fileName}:`, err);
+    }
+  }
+
+  // Write binary index so we can restore the metadata mapping
+  const binaryIndex = binaryAssets.map((a) => ({
+    id: a.id,
+    documentId: a.documentId,
+    mimeType: a.mimeType,
+    size: a.blob?.size ?? 0,
+    fileName: `${a.id}.${a.mimeType.split("/")[1]?.replace("mpeg", "mp3").replace("mp4", "m4a") ?? "bin"}`,
+  }));
+  const indexFile = await binaryFolder.getFileHandle("index.json", { create: true });
+  const indexWritable = await indexFile.createWritable();
+  await indexWritable.write(JSON.stringify(binaryIndex, null, 2));
+  await indexWritable.close();
+  fileCount++;
+
   // Write a manifest with sync timestamp
   const manifest = JSON.stringify({
     syncedAt: new Date().toISOString(),
     tables: tables.map((t) => t.name),
+    binaryCount: binaryAssets.length,
     version: 4,
   }, null, 2);
 
@@ -176,6 +211,58 @@ export async function syncFromFolder(handle: FileSystemDirectoryHandle): Promise
     } catch {
       // File doesn't exist, skip
     }
+  }
+
+  // Restore binary assets
+  try {
+    const binaryFolder = await appFolder.getDirectoryHandle("files");
+    const indexHandle = await binaryFolder.getFileHandle("index.json");
+    const indexFile = await indexHandle.getFile();
+    const binaryIndex = JSON.parse(await indexFile.text()) as Array<{
+      id: string;
+      documentId: string;
+      mimeType: string;
+      fileName: string;
+    }>;
+
+    let binaryCount = 0;
+    for (const entry of binaryIndex) {
+      // Skip if already in IndexedDB
+      const existing = await db.binaryAssets.get(entry.id);
+      if (existing?.blob && existing.blob.size > 0) {
+        binaryCount++;
+        continue;
+      }
+
+      try {
+        const fileHandle = await binaryFolder.getFileHandle(entry.fileName);
+        const file = await fileHandle.getFile();
+        const blob = new Blob([await file.arrayBuffer()], { type: entry.mimeType });
+
+        if (existing) {
+          await db.binaryAssets.update(entry.id, { blob, mimeType: entry.mimeType });
+        } else {
+          await db.binaryAssets.add({
+            id: entry.id,
+            documentId: entry.documentId,
+            blob,
+            mimeType: entry.mimeType,
+            driveFileId: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+            deletedAt: null,
+            _dirty: false,
+            _lastSyncedSnapshot: null,
+          } as never);
+        }
+        binaryCount++;
+      } catch {
+        console.warn(`[sync] Failed to restore binary ${entry.fileName}`);
+      }
+    }
+    tables["binaryAssets"] = binaryCount;
+  } catch {
+    // No binary folder, skip
   }
 
   return { tables };
