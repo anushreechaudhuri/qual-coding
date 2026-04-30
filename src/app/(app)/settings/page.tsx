@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ApiKeyForm } from "@/components/settings/ApiKeyForm";
 import { exportFullBackup, importFullBackup } from "@/lib/export/backup";
 import { saveToFile, loadFromFile } from "@/lib/sync/localFolderSync";
+import { DriveFolderPicker } from "@/components/sync/DriveFolderPicker";
 
 export default function SettingsPage() {
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
@@ -58,6 +59,17 @@ export default function SettingsPage() {
             </p>
           </div>
           <ApiKeyForm />
+        </section>
+
+        <section className="space-y-4 border-t border-stone-200 pt-8">
+          <div>
+            <h2 className="text-sm font-medium text-stone-900">Google Drive Sync</h2>
+            <p className="mt-1 text-xs text-stone-500">
+              Choose where in your Google Drive to store synced data.
+              A &ldquo;QualCoding&rdquo; subfolder is created automatically.
+            </p>
+          </div>
+          <DriveFolderPicker />
         </section>
 
         <section className="space-y-4 border-t border-stone-200 pt-8">

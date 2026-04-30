@@ -94,6 +94,10 @@ async function performSync(accessToken: string): Promise<void> {
       error: null,
     });
   } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      setState({ status: "error", error: "Sync request timed out, will retry" });
+      return;
+    }
     if (err instanceof DriveError && err.isAuthError) {
       setState({ status: "auth_required", error: "Re-authentication needed" });
       return;

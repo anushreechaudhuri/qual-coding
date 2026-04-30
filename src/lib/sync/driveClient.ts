@@ -19,13 +19,62 @@ export interface DriveFile {
 
 let appFolderId: string | null = null;
 
+const SYNC_FOLDER_KEY = "qual-coding:drive-folder-id";
+
 /**
- * Get or create the QualCoding folder in the user's Drive root.
+ * Set a custom Drive folder ID for sync. Stored in localStorage.
+ */
+export function setSyncFolderId(folderId: string | null): void {
+  appFolderId = folderId;
+  if (folderId) {
+    localStorage.setItem(SYNC_FOLDER_KEY, folderId);
+  } else {
+    localStorage.removeItem(SYNC_FOLDER_KEY);
+  }
+}
+
+/**
+ * Get the configured sync folder ID.
+ */
+export function getSyncFolderId(): string | null {
+  if (appFolderId) return appFolderId;
+  if (typeof window !== "undefined") {
+    appFolderId = localStorage.getItem(SYNC_FOLDER_KEY);
+  }
+  return appFolderId;
+}
+
+/**
+ * List folders in a Drive directory (for the folder picker).
+ */
+export async function listDriveFolders(
+  accessToken: string,
+  parentId?: string
+): Promise<DriveFile[]> {
+  const parentQuery = parentId ? `'${parentId}' in parents and` : "";
+  const res = await fetch(
+    `${DRIVE_API}/files?q=${parentQuery} mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name,modifiedTime)&pageSize=100&orderBy=name`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (!res.ok) throw new DriveError(res.status, await res.text());
+  const data = await res.json();
+  return data.files ?? [];
+}
+
+/**
+ * Get or create the QualCoding folder. Uses a custom parent if configured,
+ * otherwise creates in Drive root.
  */
 async function getOrCreateAppFolder(accessToken: string): Promise<string> {
-  if (appFolderId) return appFolderId;
+  // Check localStorage for saved folder ID
+  const savedId = getSyncFolderId();
+  if (savedId) {
+    appFolderId = savedId;
+    return savedId;
+  }
 
-  // Search for existing folder
+  // Search for existing QualCoding folder
   const searchRes = await fetch(
     `${DRIVE_API}/files?q=name='${APP_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id)&pageSize=1`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -36,10 +85,11 @@ async function getOrCreateAppFolder(accessToken: string): Promise<string> {
   const searchData = await searchRes.json();
   if (searchData.files?.length > 0) {
     appFolderId = searchData.files[0].id;
+    setSyncFolderId(appFolderId);
     return appFolderId!;
   }
 
-  // Create folder
+  // Create folder in root
   const createRes = await fetch(`${DRIVE_API}/files`, {
     method: "POST",
     headers: {
@@ -56,6 +106,7 @@ async function getOrCreateAppFolder(accessToken: string): Promise<string> {
 
   const folder = await createRes.json();
   appFolderId = folder.id;
+  setSyncFolderId(appFolderId);
   return appFolderId!;
 }
 
