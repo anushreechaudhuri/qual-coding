@@ -26,6 +26,29 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
   const [searchQuery, setSearchQuery] = useState("");
   const isSynced = codebookGroupId !== projectId;
 
+  function handleExportCSV() {
+    if (codes.length === 0) return;
+
+    const codeMap = new Map(codes.map((c) => [c.id, c]));
+    const header = "name,parent,definition,color,provenance";
+    const rows = codes.map((c) => {
+      const parent = c.parentId ? codeMap.get(c.parentId)?.name ?? "" : "";
+      const def = c.definition.replace(/"/g, '""');
+      return `"${c.name}","${parent}","${def}","${c.color}","${c.provenance}"`;
+    });
+
+    const csv = [header, ...rows].join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "codebook.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
   const selectedCode = codes.find((c) => c.id === selectedCodeId) ?? null;
 
   // Get coding counts per code for the tree display
@@ -61,7 +84,8 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
           <span className="text-stone-200">|</span>
           <button onClick={() => setShowSync(true)} className="hover:text-stone-600">Sync</button>
           <button onClick={() => setShowCopyFrom(true)} className="hover:text-stone-600">Copy</button>
-          <button onClick={() => setShowImport(true)} className="hover:text-stone-600">CSV</button>
+          <button onClick={() => setShowImport(true)} className="hover:text-stone-600">Import</button>
+          <button onClick={() => handleExportCSV()} className="hover:text-stone-600">Export</button>
         </div>
       </div>
 

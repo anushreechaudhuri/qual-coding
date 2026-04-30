@@ -113,15 +113,34 @@ export function CodebookImport({
               Upload a CSV or JSON file with columns: name, parent, definition,
               color.
             </p>
-            <input
-              type="file"
-              accept=".csv,.json"
-              onChange={(e) => {
-                const file = e.target.files?.[0];
-                if (file) handleFile(file);
-              }}
-              className="block text-sm text-stone-600"
-            />
+            <div className="flex items-center gap-3">
+              <input
+                type="file"
+                accept=".csv,.json"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleFile(file);
+                }}
+                className="block text-sm text-stone-600"
+              />
+              <button
+                onClick={() => {
+                  const template = "name,parent,definition,color\nLand,,\"Themes related to land\",#ef4444\nDispossession,Land,\"Loss of land access\",#f97316\nCompensation,Land,\"Payment for land\",#eab308";
+                  const blob = new Blob([template], { type: "text/csv" });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement("a");
+                  a.href = url;
+                  a.download = "codebook-template.csv";
+                  document.body.appendChild(a);
+                  a.click();
+                  document.body.removeChild(a);
+                  URL.revokeObjectURL(url);
+                }}
+                className="shrink-0 rounded border border-stone-200 px-2 py-1 text-xs text-stone-500 hover:bg-stone-50"
+              >
+                Download template
+              </button>
+            </div>
             {error && <p className="text-sm text-red-600">{error}</p>}
             <div className="flex justify-end">
               <button
