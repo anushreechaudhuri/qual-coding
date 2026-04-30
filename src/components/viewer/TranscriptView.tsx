@@ -227,7 +227,11 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
                 data-content-container
                 className="font-serif text-stone-900 leading-relaxed whitespace-pre-wrap text-sm"
               >
-                {seg.content}
+                <SegmentText
+                  text={seg.content}
+                  isPendingTarget={picker?.segmentIndex === i && !picker?.isTranslation}
+                  pendingText={picker?.text}
+                />
               </p>
             </div>
             <div
@@ -239,7 +243,11 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
                 data-content-container
                 className="font-serif text-stone-600 leading-relaxed whitespace-pre-wrap text-sm italic mt-5"
               >
-                {seg.translation && seg.translation !== seg.content ? seg.translation : ""}
+                <SegmentText
+                  text={seg.translation && seg.translation !== seg.content ? seg.translation : ""}
+                  isPendingTarget={picker?.segmentIndex === i && picker?.isTranslation}
+                  pendingText={picker?.text}
+                />
               </p>
             </div>
           </div>
@@ -256,5 +264,35 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
         />
       )}
     </div>
+  );
+}
+
+/**
+ * Renders segment text with a yellow highlight on the pending selection.
+ */
+function SegmentText({
+  text,
+  isPendingTarget,
+  pendingText,
+}: {
+  text: string;
+  isPendingTarget: boolean;
+  pendingText?: string;
+}) {
+  if (!text) return null;
+
+  if (!isPendingTarget || !pendingText) {
+    return <>{text}</>;
+  }
+
+  const idx = text.indexOf(pendingText);
+  if (idx === -1) return <>{text}</>;
+
+  return (
+    <>
+      {text.slice(0, idx)}
+      <mark className="bg-yellow-200 rounded-sm">{pendingText}</mark>
+      {text.slice(idx + pendingText.length)}
+    </>
   );
 }
