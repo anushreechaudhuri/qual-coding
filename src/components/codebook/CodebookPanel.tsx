@@ -79,13 +79,18 @@ export function CodebookPanel({ projectId }: { projectId: string }) {
             </span>
           )}
         </div>
-        <div className="flex gap-1 text-[10px] text-stone-400">
-          <button onClick={() => setShowCreate(true)} className="hover:text-stone-600" title="Add code">+</button>
+        <div className="flex items-center gap-0.5 text-[10px] text-stone-400">
+          <button onClick={() => setShowCreate(true)} className="hover:text-stone-600 px-1" title="Add code">+</button>
           <span className="text-stone-200">|</span>
-          <button onClick={() => setShowSync(true)} className="hover:text-stone-600">Sync</button>
-          <button onClick={() => setShowCopyFrom(true)} className="hover:text-stone-600">Copy</button>
-          <button onClick={() => setShowImport(true)} className="hover:text-stone-600">Import</button>
-          <button onClick={() => handleExportCSV()} className="hover:text-stone-600">Export</button>
+          <div className="relative group">
+            <button className="hover:text-stone-600 px-1">···</button>
+            <div className="hidden group-hover:block absolute right-0 top-4 z-50 w-28 rounded border border-stone-200 bg-white py-0.5 shadow-lg">
+              <button onClick={() => setShowSync(true)} className="w-full px-3 py-1 text-left hover:bg-stone-50">Sync</button>
+              <button onClick={() => setShowCopyFrom(true)} className="w-full px-3 py-1 text-left hover:bg-stone-50">Copy from</button>
+              <button onClick={() => setShowImport(true)} className="w-full px-3 py-1 text-left hover:bg-stone-50">Import CSV</button>
+              <button onClick={() => handleExportCSV()} className="w-full px-3 py-1 text-left hover:bg-stone-50">Export CSV</button>
+            </div>
+          </div>
         </div>
       </div>
 
