@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signOut } from "next-auth/react";
+import { signIn, signOut, useSession } from "next-auth/react";
 import Link from "next/link";
 import { AppShell } from "@/components/layout/AppShell";
 import { ProjectList } from "@/components/projects/ProjectList";
@@ -125,12 +125,7 @@ function Header({
         <Link href="/settings" className="hover:text-stone-700">
           Settings
         </Link>
-        <button
-          onClick={() => signOut({ callbackUrl: "/", redirect: true })}
-          className="hover:text-stone-700"
-        >
-          Sign out
-        </button>
+        <AuthButton />
         <SyncIndicator />
       </div>
     </div>
@@ -170,6 +165,30 @@ function ProjectCenter({
         Upload a document
       </button>
     </div>
+  );
+}
+
+function AuthButton() {
+  const { data: session } = useSession();
+
+  if (session) {
+    return (
+      <button
+        onClick={() => signOut({ callbackUrl: "/", redirect: true })}
+        className="hover:text-stone-700"
+      >
+        Sign out
+      </button>
+    );
+  }
+
+  return (
+    <button
+      onClick={() => signIn("google", { callbackUrl: "/projects" })}
+      className="hover:text-stone-700"
+    >
+      Sign in
+    </button>
   );
 }
 

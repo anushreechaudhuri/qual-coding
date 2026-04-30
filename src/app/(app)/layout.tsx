@@ -1,20 +1,12 @@
-import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
-
 /**
- * Authenticated layout. Every route under (app)/ requires a valid session.
- * Unauthenticated users are redirected to the landing page.
+ * App layout. Works with or without authentication.
+ * Unauthenticated users get full local functionality (IndexedDB).
+ * Authenticated users additionally get Drive sync.
  */
-export default async function AuthenticatedLayout({
+export default function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-
-  if (!session) {
-    redirect("/");
-  }
-
   return <>{children}</>;
 }
