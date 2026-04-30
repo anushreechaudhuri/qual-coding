@@ -90,12 +90,6 @@ export function AudioViewer({ document: doc }: { document: Document }) {
           </button>
         </div>
       )}
-      <SegmentList
-        document={doc}
-        segments={doc.segments}
-        activeSegmentIndex={activeSegmentIndex}
-        onSeek={handleSeek}
-      />
     </div>
   );
 }
