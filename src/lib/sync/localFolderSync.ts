@@ -88,41 +88,16 @@ export async function saveToFile(
   const json = JSON.stringify(saveData);
   const blob = new Blob([json], { type: "application/json" });
 
-  onProgress?.("Saving...");
+  onProgress?.("Downloading...");
 
-  // Try showSaveFilePicker first
-  if (isFileSystemAccessSupported()) {
-    try {
-      const handle = await (window as unknown as {
-        showSaveFilePicker: (opts: Record<string, unknown>) => Promise<FileSystemFileHandle>;
-      }).showSaveFilePicker({
-        suggestedName: `qualcoding-backup-${new Date().toISOString().split("T")[0]}.json`,
-        types: [{
-          description: "QualCoding Backup",
-          accept: { "application/json": [".json"] },
-        }],
-      });
-
-      const writable = await handle.createWritable();
-      await writable.write(blob);
-      await writable.close();
-
-      return { size: blob.size };
-    } catch (err) {
-      // User cancelled or API failed, fall through to download
-      if ((err as Error).name === "AbortError") {
-        throw new Error("Cancelled");
-      }
-    }
-  }
-
-  // Fallback: trigger download
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
   a.download = `qualcoding-backup-${new Date().toISOString().split("T")[0]}.json`;
+  document.body.appendChild(a);
   a.click();
-  URL.revokeObjectURL(url);
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
 
   return { size: blob.size };
 }
