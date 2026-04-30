@@ -121,6 +121,8 @@ export default function SettingsPage() {
 function FolderSyncSection() {
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [includeBinaries, setIncludeBinaries] = useState(false);
+  // Track if binary encoding is what's slow
+  const [binaryWarning] = useState(() => "Warning: including audio files encodes them as base64, which can be very slow for large files (100MB+). Consider saving without binaries first.");
   const [syncing, setSyncing] = useState(false);
   const restoreRef = useRef<HTMLInputElement>(null);
 
@@ -182,8 +184,13 @@ function FolderSyncSection() {
           onChange={(e) => setIncludeBinaries(e.target.checked)}
           className="rounded border-stone-300"
         />
-        Include audio/PDF files (large, may take a while)
+        Include audio/PDF files
       </label>
+      {includeBinaries && (
+        <p className="text-[10px] text-amber-600 ml-6">
+          {binaryWarning}
+        </p>
+      )}
 
       <div className="flex gap-2">
         <button
