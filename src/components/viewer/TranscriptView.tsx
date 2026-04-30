@@ -77,21 +77,36 @@ export function TranscriptView({ document: doc }: { document: Document }) {
       )}
 
       {viewMode === "side-by-side" && (
-        <div className="grid grid-cols-2 gap-0 divide-x divide-stone-100">
-          <div className="px-4 py-4 font-serif text-stone-900 leading-relaxed">
-            <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 font-sans mb-2">
-              Original
-            </p>
-            <TextAnnotator document={doc} />
+        <div className="px-4 py-4">
+          <div className="grid grid-cols-2 gap-0 text-[10px] font-medium uppercase tracking-wider text-stone-400 font-sans mb-2 px-2">
+            <span>Original</span>
+            <span>Translation</span>
           </div>
-          {hasTranslation && (
-            <div className="px-4 py-4 font-serif text-stone-600 leading-relaxed text-sm">
-              <p className="text-[10px] font-medium uppercase tracking-wider text-stone-400 font-sans mb-2">
-                Translation
-              </p>
-              <TextAnnotator document={doc} isTranslation />
-            </div>
-          )}
+          <div className="divide-y divide-stone-50">
+            {doc.segments.length > 0 ? (
+              doc.segments.map((seg) => (
+                <div key={seg.index} className="grid grid-cols-2 gap-4 py-2 px-2 hover:bg-stone-50">
+                  <div>
+                    <div className="flex items-baseline gap-2 mb-0.5">
+                      <span className="text-[11px] font-medium text-stone-500 font-sans">{seg.speaker}</span>
+                      <span className="text-[10px] text-stone-400 font-sans">{seg.timestamp}</span>
+                    </div>
+                    <p className="font-serif text-stone-900 leading-relaxed whitespace-pre-wrap text-sm">{seg.content}</p>
+                  </div>
+                  <div>
+                    <p className="font-serif text-stone-600 leading-relaxed whitespace-pre-wrap text-sm italic mt-5">
+                      {seg.translation && seg.translation !== seg.content ? seg.translation : ""}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                <TextAnnotator document={doc} />
+                {hasTranslation && <TextAnnotator document={doc} isTranslation />}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

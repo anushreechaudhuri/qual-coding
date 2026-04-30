@@ -60,11 +60,14 @@ export async function POST(req: NextRequest) {
     const prompt = `Transcribe ONLY the portion of this audio from ${startMin}:00 to ${endMin}:00 (minutes:seconds).
 
 Requirements:
-1. Label each speaker by role when possible (Interviewer, Farmer 1, Farmer 2, Translator, etc.). Be consistent with labels.
-2. Timestamps in MM:SS format, starting from the actual position in the recording (not from 00:00).
-3. Transcribe in the original language exactly as spoken, preserving code-switching.
-4. Provide an English translation for each segment.
-5. Detect the language of each segment.${speakerContext}
+1. Group text by SPEAKER TURNS, not individual sentences. Each segment should be one full speaker turn (everything one person says before the next person speaks). Do NOT split a single speaker's continuous speech into multiple segments.
+2. Label each speaker by role when possible (Interviewer, Farmer 1, Farmer 2, Translator, etc.). Distinguish between different speakers carefully.
+3. Timestamps in MM:SS format matching the actual recording position.
+4. Transcribe in the original language exactly as spoken, preserving code-switching.
+5. For EACH segment, provide a complete English translation that matches the full original content. The translation should cover the same text as the original, not summarize it.
+6. Detect the language of each segment.${speakerContext}
+
+IMPORTANT: Each segment's "content" and "translation" must correspond to the same speech. Do not fragment into many tiny segments. One segment per speaker turn.
 
 The primary language is ${language}. Be thorough and accurate. These are research recordings.`;
 
