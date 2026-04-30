@@ -87,6 +87,7 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
     text: string;
     startOffset: number;
     endOffset: number;
+    highlightRects: DOMRect[];
   } | null>(null);
 
   // Get all codings for this document
@@ -173,6 +174,9 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
     const fullStart = offsets.start + headerLen + startOffset;
     const fullEnd = fullStart + text.length;
 
+    // Capture all selection rects before React re-renders and clears them
+    const rects = Array.from(range.getClientRects());
+
     setPicker({
       position: { x: Math.min(rect.left, window.innerWidth - 220), y: rect.bottom + 4 },
       segmentIndex,
@@ -180,6 +184,7 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
       text,
       startOffset: fullStart,
       endOffset: fullEnd,
+      highlightRects: rects,
     });
   }
 
@@ -227,11 +232,7 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
                 data-content-container
                 className="font-serif text-stone-900 leading-relaxed whitespace-pre-wrap text-sm"
               >
-                <SegmentText
-                  text={seg.content}
-                  isPendingTarget={picker?.segmentIndex === i && !picker?.isTranslation}
-                  pendingText={picker?.text}
-                />
+                {seg.content}
               </p>
             </div>
             <div
@@ -243,16 +244,30 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
                 data-content-container
                 className="font-serif text-stone-600 leading-relaxed whitespace-pre-wrap text-sm italic mt-5"
               >
-                <SegmentText
-                  text={seg.translation && seg.translation !== seg.content ? seg.translation : ""}
-                  isPendingTarget={picker?.segmentIndex === i && picker?.isTranslation}
-                  pendingText={picker?.text}
-                />
+                {seg.translation && seg.translation !== seg.content ? seg.translation : ""}
               </p>
             </div>
           </div>
         ))}
       </div>
+
+      {/* Floating yellow highlight overlay */}
+      {picker && picker.highlightRects.length > 0 && (
+        picker.highlightRects.map((rect, i) => (
+          <div
+            key={i}
+            className="fixed pointer-events-none rounded-sm"
+            style={{
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+              height: rect.height,
+              backgroundColor: "rgba(253, 230, 138, 0.6)",
+              zIndex: 30,
+            }}
+          />
+        ))
+      )}
 
       {picker && codes.length > 0 && (
         <CodePicker
@@ -267,32 +282,3 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
   );
 }
 
-/**
- * Renders segment text with a yellow highlight on the pending selection.
- */
-function SegmentText({
-  text,
-  isPendingTarget,
-  pendingText,
-}: {
-  text: string;
-  isPendingTarget: boolean;
-  pendingText?: string;
-}) {
-  if (!text) return null;
-
-  if (!isPendingTarget || !pendingText) {
-    return <>{text}</>;
-  }
-
-  const idx = text.indexOf(pendingText);
-  if (idx === -1) return <>{text}</>;
-
-  return (
-    <>
-      {text.slice(0, idx)}
-      <mark className="bg-yellow-200 rounded-sm">{pendingText}</mark>
-      {text.slice(idx + pendingText.length)}
-    </>
-  );
-}
