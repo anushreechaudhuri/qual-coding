@@ -130,6 +130,8 @@ function FolderSyncSection() {
   const [folderHandle, setFolderHandle] = useState<FileSystemDirectoryHandle | null>(null);
   const [folderInfo, setFolderInfo] = useState<{ name: string; lastSynced: string | null } | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
+  const [includeBinaries, setIncludeBinaries] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const [supported] = useState(() => isFileSystemAccessSupported());
 
   useEffect(() => {
@@ -152,15 +154,21 @@ function FolderSyncSection() {
 
   async function handleSyncTo() {
     if (!folderHandle) return;
-    setSyncStatus("Syncing to folder...");
+    setSyncing(true);
+    setSyncStatus("Starting sync...");
     try {
-      const result = await syncToFolder(folderHandle);
-      const sizeKB = (result.size / 1024).toFixed(0);
-      setSyncStatus(`Saved ${result.files} files (${sizeKB}KB) to ${folderInfo?.name ?? "folder"}`);
+      const result = await syncToFolder(folderHandle, {
+        includeBinaries,
+        onProgress: (msg) => setSyncStatus(msg),
+      });
+      const sizeMB = (result.size / (1024 * 1024)).toFixed(1);
+      setSyncStatus(`Saved ${result.files} files (${sizeMB}MB) to ${folderInfo?.name ?? "folder"}`);
       setFolderInfo(await getSyncFolderInfo(folderHandle));
       setTimeout(() => setSyncStatus(null), 5000);
     } catch (err) {
       setSyncStatus(`Sync failed: ${err instanceof Error ? err.message : "unknown error"}`);
+    } finally {
+      setSyncing(false);
     }
   }
 
@@ -223,12 +231,23 @@ function FolderSyncSection() {
             )}
           </div>
 
+          <label className="flex items-center gap-2 text-xs text-stone-600">
+            <input
+              type="checkbox"
+              checked={includeBinaries}
+              onChange={(e) => setIncludeBinaries(e.target.checked)}
+              className="rounded border-stone-300"
+            />
+            Include audio/PDF files (large, may take a while)
+          </label>
+
           <div className="flex gap-2">
             <button
               onClick={handleSyncTo}
-              className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800"
+              disabled={syncing}
+              className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-50"
             >
-              Save to folder
+              {syncing ? "Syncing..." : "Save to folder"}
             </button>
             <button
               onClick={handleSyncFrom}

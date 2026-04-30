@@ -81,10 +81,14 @@ export async function clearSyncFolder(): Promise<void> {
 /**
  * Export all data to the sync folder as JSON files.
  */
-export async function syncToFolder(handle: FileSystemDirectoryHandle): Promise<{
+export async function syncToFolder(
+  handle: FileSystemDirectoryHandle,
+  options: { includeBinaries?: boolean; onProgress?: (msg: string) => void } = {}
+): Promise<{
   files: number;
   size: number;
 }> {
+  const { includeBinaries = false, onProgress } = options;
   let totalSize = 0;
   let fileCount = 0;
 
@@ -102,6 +106,7 @@ export async function syncToFolder(handle: FileSystemDirectoryHandle): Promise<{
   ];
 
   for (const table of tables) {
+    onProgress?.(`Saving ${table.name}...`);
     const data = await table.query();
     const json = JSON.stringify(data, null, 2);
 
@@ -115,13 +120,38 @@ export async function syncToFolder(handle: FileSystemDirectoryHandle): Promise<{
   }
 
   // Export binary assets (audio files, PDFs) as actual files
+  if (!includeBinaries) {
+    // Write manifest without binaries
+    onProgress?.("Writing manifest...");
+    const manifest = JSON.stringify({
+      syncedAt: new Date().toISOString(),
+      tables: tables.map((t) => t.name),
+      binaryCount: 0,
+      version: 4,
+    }, null, 2);
+
+    const manifestFile = await appFolder.getFileHandle("manifest.json", { create: true });
+    const writable = await manifestFile.createWritable();
+    await writable.write(manifest);
+    await writable.close();
+    fileCount++;
+
+    return { files: fileCount, size: totalSize };
+  }
   const binaryFolder = await appFolder.getDirectoryHandle("files", { create: true });
   const binaryAssets = await db.binaryAssets.filter((b) => b.deletedAt === null).toArray();
 
-  for (const asset of binaryAssets) {
+  for (let i = 0; i < binaryAssets.length; i++) {
+    const asset = binaryAssets[i];
     if (!asset.blob || asset.blob.size === 0) continue;
     const ext = asset.mimeType.split("/")[1]?.replace("mpeg", "mp3").replace("mp4", "m4a") ?? "bin";
     const fileName = `${asset.id}.${ext}`;
+    const sizeMB = (asset.blob.size / (1024 * 1024)).toFixed(1);
+    onProgress?.(`Saving file ${i + 1}/${binaryAssets.length} (${sizeMB}MB)...`);
+
+    // Yield to event loop between large files to prevent browser freeze
+    await new Promise((r) => setTimeout(r, 50));
+
     try {
       const file = await binaryFolder.getFileHandle(fileName, { create: true });
       const writable = await file.createWritable();
