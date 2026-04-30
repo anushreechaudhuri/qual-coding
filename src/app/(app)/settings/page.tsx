@@ -59,6 +59,7 @@ export default function SettingsPage() {
             </p>
           </div>
           <ApiKeyForm />
+          <SharedKeysUnlock />
         </section>
 
         <section className="space-y-4 border-t border-stone-200 pt-8">
@@ -244,5 +245,87 @@ function FolderSyncSection() {
         {includeBinaries ? " plus audio/PDF files" : ""}.
       </p>
     </section>
+  );
+}
+
+function SharedKeysUnlock() {
+  const [password, setPassword] = useState("");
+  const [status, setStatus] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleUnlock() {
+    if (!password.trim()) return;
+    setLoading(true);
+    setStatus(null);
+
+    try {
+      const res = await fetch("/api/shared-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: password.trim() }),
+      });
+
+      if (res.status === 404) {
+        setStatus("Shared keys not available on this instance.");
+        return;
+      }
+
+      if (res.status === 401) {
+        setStatus("Wrong password.");
+        return;
+      }
+
+      if (!res.ok) {
+        setStatus("Something went wrong.");
+        return;
+      }
+
+      const { keys } = await res.json();
+      let count = 0;
+
+      for (const [name, value] of Object.entries(keys)) {
+        if (value) {
+          localStorage.setItem(`qual-coding:api-key:${name}`, value as string);
+          count++;
+        }
+      }
+
+      setStatus(`${count} API keys loaded. Reload the page to use them.`);
+      setPassword("");
+    } catch {
+      setStatus("Connection failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="mt-4 pt-4 border-t border-stone-100">
+      <p className="text-xs text-stone-500 mb-2">
+        Have a shared access password? Enter it to load API keys.
+      </p>
+      <div className="flex gap-2">
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
+          placeholder="Shared password"
+          className="flex-1 rounded-md border border-stone-200 px-3 py-2 text-sm focus:border-stone-400 focus:outline-none"
+        />
+        <button
+          onClick={handleUnlock}
+          disabled={loading || !password.trim()}
+          className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-40"
+        >
+          {loading ? "..." : "Unlock"}
+        </button>
+      </div>
+      {status && (
+        <p className={`mt-1 text-xs ${status.includes("loaded") ? "text-green-600" : "text-red-500"}`}>
+          {status}
+        </p>
+      )}
+    </div>
   );
 }
