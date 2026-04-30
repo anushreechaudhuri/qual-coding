@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import dynamic from "next/dynamic";
 import type { Document } from "@/types";
@@ -23,13 +23,17 @@ import { CopyDropdown } from "./CopyDropdown";
  *   adjusts all coding offsets automatically.
  */
 export function MarkdownViewer({ document: doc }: { document: Document }) {
-  const [mode, setMode] = useState<"read" | "code">("read");
+  // Audio transcripts default to Code mode since coding is the primary use case
+  const isAudio = doc.fileType.startsWith("audio/");
+  const [mode, setMode] = useState<"read" | "code">(isAudio ? "code" : "read");
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(doc.content);
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [showSearch, setShowSearch] = useState(false);
+  const [searchIndex, setSearchIndex] = useState(0);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const { pushUndo, undo, redo, canUndo, canRedo } = useUndoStore();
 
@@ -208,34 +212,19 @@ export function MarkdownViewer({ document: doc }: { document: Document }) {
 
       {/* Search bar */}
       {showSearch && (
-        <div className="flex items-center gap-2 mb-3 px-1">
-          <input
-            autoFocus
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search in document..."
-            className="flex-1 rounded border border-stone-200 px-3 py-1.5 text-xs focus:border-stone-400 focus:outline-none"
-            onKeyDown={(e) => {
-              if (e.key === "Escape") {
-                setShowSearch(false);
-                setSearchQuery("");
-              }
-            }}
-          />
-          {searchQuery && (
-            <span className="text-[10px] text-stone-400">
-              {(doc.content.match(new RegExp(searchQuery.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi")) || []).length} matches
-            </span>
-          )}
-          <button
-            onClick={() => { setShowSearch(false); setSearchQuery(""); }}
-            className="text-xs text-stone-400 hover:text-stone-600"
-          >
-            ×
-          </button>
-        </div>
+        <SearchBar
+          content={doc.content}
+          query={searchQuery}
+          onQueryChange={(q) => { setSearchQuery(q); setSearchIndex(0); }}
+          currentIndex={searchIndex}
+          onNext={() => setSearchIndex((i) => i + 1)}
+          onPrev={() => setSearchIndex((i) => Math.max(0, i - 1))}
+          onClose={() => { setShowSearch(false); setSearchQuery(""); }}
+          containerRef={contentRef}
+        />
       )}
 
+      <div ref={contentRef}>
       {/* Read mode */}
       {mode === "read" && (
         <div className="font-serif text-stone-900 leading-relaxed prose prose-stone prose-sm max-w-none">
@@ -283,6 +272,112 @@ export function MarkdownViewer({ document: doc }: { document: Document }) {
           />
         </div>
       )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Search bar with match highlighting and prev/next navigation.
+ */
+function SearchBar({
+  content,
+  query,
+  onQueryChange,
+  currentIndex,
+  onNext,
+  onPrev,
+  onClose,
+  containerRef,
+}: {
+  content: string;
+  query: string;
+  onQueryChange: (q: string) => void;
+  currentIndex: number;
+  onNext: () => void;
+  onPrev: () => void;
+  onClose: () => void;
+  containerRef: React.RefObject<HTMLDivElement | null>;
+}) {
+  const matchCount = useMemo(() => {
+    if (!query) return 0;
+    try {
+      return (content.match(new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi")) || []).length;
+    } catch {
+      return 0;
+    }
+  }, [content, query]);
+
+  // Scroll to current match
+  useEffect(() => {
+    if (!query || !containerRef.current || matchCount === 0) return;
+
+    // Use browser's built-in find to highlight
+    const container = containerRef.current;
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+    const regex = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+
+    let matchIdx = 0;
+    let node: Node | null;
+
+    while ((node = walker.nextNode())) {
+      const text = node.textContent ?? "";
+      let match: RegExpExecArray | null;
+      regex.lastIndex = 0;
+
+      while ((match = regex.exec(text)) !== null) {
+        if (matchIdx === (currentIndex % matchCount)) {
+          // Found the target match, scroll to it
+          const range = document.createRange();
+          range.setStart(node, match.index);
+          range.setEnd(node, match.index + match[0].length);
+          const rect = range.getBoundingClientRect();
+          const containerRect = container.getBoundingClientRect();
+
+          container.closest("[class*='overflow-y-auto']")?.scrollTo({
+            top: rect.top - containerRect.top + (container.closest("[class*='overflow-y-auto']")?.scrollTop ?? 0) - 100,
+            behavior: "smooth",
+          });
+
+          // Flash highlight
+          const sel = window.getSelection();
+          sel?.removeAllRanges();
+          sel?.addRange(range);
+
+          return;
+        }
+        matchIdx++;
+      }
+    }
+  }, [query, currentIndex, matchCount, containerRef]);
+
+  return (
+    <div className="flex items-center gap-2 mb-3 px-1">
+      <input
+        autoFocus
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
+        placeholder="Search in document..."
+        className="flex-1 rounded border border-stone-200 px-3 py-1.5 text-xs focus:border-stone-400 focus:outline-none"
+        onKeyDown={(e) => {
+          if (e.key === "Escape") onClose();
+          if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onNext(); }
+          if (e.key === "Enter" && e.shiftKey) { e.preventDefault(); onPrev(); }
+        }}
+      />
+      {query && matchCount > 0 && (
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-stone-400 tabular-nums">
+            {(currentIndex % matchCount) + 1}/{matchCount}
+          </span>
+          <button onClick={onPrev} className="rounded px-1 text-xs text-stone-400 hover:bg-stone-100">↑</button>
+          <button onClick={onNext} className="rounded px-1 text-xs text-stone-400 hover:bg-stone-100">↓</button>
+        </div>
+      )}
+      {query && matchCount === 0 && (
+        <span className="text-[10px] text-stone-400">No matches</span>
+      )}
+      <button onClick={onClose} className="text-xs text-stone-400 hover:text-stone-600">×</button>
     </div>
   );
 }
