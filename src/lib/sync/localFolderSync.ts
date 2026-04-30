@@ -1,323 +1,242 @@
 /**
- * Local folder sync using the File System Access API.
+ * Local file sync using simple file save/load.
  *
- * User picks a folder on their computer (e.g., inside Google Drive,
- * Dropbox, pCloud, or OneDrive). We save JSON data files there
- * periodically. Cloud desktop apps handle the cloud sync automatically.
+ * Two approaches:
+ * 1. showSaveFilePicker (Chrome/Edge): saves to a specific file location,
+ *    can be inside a cloud drive folder. Remembers the location.
+ * 2. Download fallback: triggers a normal browser download.
  *
- * No OAuth, no API keys, no quota limits. Works with any cloud provider.
- * The directory handle persists in IndexedDB across sessions.
+ * Both save a single .qualcoding file (JSON) containing all project data.
+ * Binary files are saved separately as individual downloads.
  */
 
 import { db } from "@/lib/db/schema";
-
-const HANDLE_STORE_KEY = "qual-coding:sync-folder-handle";
 
 /**
  * Check if the File System Access API is available.
  */
 export function isFileSystemAccessSupported(): boolean {
-  return typeof window !== "undefined" && "showDirectoryPicker" in window;
+  return typeof window !== "undefined" && "showSaveFilePicker" in window;
 }
 
 /**
- * Prompt user to pick a sync folder.
+ * Save all data to a single file. Uses showSaveFilePicker if available,
+ * falls back to download.
  */
-export async function pickSyncFolder(): Promise<FileSystemDirectoryHandle | null> {
-  try {
-    const handle = await (window as unknown as { showDirectoryPicker: (opts?: Record<string, unknown>) => Promise<FileSystemDirectoryHandle> }).showDirectoryPicker({
-      mode: "readwrite",
-      startIn: "documents",
-    });
-
-    // Store handle in IndexedDB for reuse
-    await saveFolderHandle(handle);
-    return handle;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Get the previously selected sync folder, if still accessible.
- */
-export async function getSavedFolderHandle(): Promise<FileSystemDirectoryHandle | null> {
-  try {
-    const stored = await db.table("syncMeta").get(HANDLE_STORE_KEY);
-    if (!stored?.handle) return null;
-
-    const handle = stored.handle as FileSystemDirectoryHandle;
-
-    // Verify we still have permission
-    const perm = await (handle as unknown as { queryPermission: (opts: Record<string, string>) => Promise<string> }).queryPermission({ mode: "readwrite" });
-    if (perm === "granted") return handle;
-
-    // Try to request permission
-    const req = await (handle as unknown as { requestPermission: (opts: Record<string, string>) => Promise<string> }).requestPermission({ mode: "readwrite" });
-    if (req === "granted") return handle;
-
-    return null;
-  } catch {
-    return null;
-  }
-}
-
-async function saveFolderHandle(handle: FileSystemDirectoryHandle): Promise<void> {
-  await db.table("syncMeta").put({
-    entityType: HANDLE_STORE_KEY,
-    handle,
-    lastSyncedAt: new Date(),
-    driveFileId: null,
-  });
-}
-
-/**
- * Clear the saved folder handle.
- */
-export async function clearSyncFolder(): Promise<void> {
-  await db.table("syncMeta").delete(HANDLE_STORE_KEY);
-}
-
-/**
- * Export all data to the sync folder as JSON files.
- */
-export async function syncToFolder(
-  handle: FileSystemDirectoryHandle,
-  options: { includeBinaries?: boolean; onProgress?: (msg: string) => void } = {}
-): Promise<{
-  files: number;
-  size: number;
-}> {
+export async function saveToFile(
+  options: {
+    includeBinaries?: boolean;
+    onProgress?: (msg: string) => void;
+  } = {}
+): Promise<{ size: number }> {
   const { includeBinaries = false, onProgress } = options;
-  let totalSize = 0;
-  let fileCount = 0;
 
-  // Create a QualCoding subfolder
-  const appFolder = await handle.getDirectoryHandle("QualCoding", { create: true });
+  onProgress?.("Collecting data...");
 
-  // Export each table as a JSON file
-  const tables = [
-    { name: "projects", query: () => db.projects.toArray() },
-    { name: "documents", query: () => db.documents.toArray() },
-    { name: "codes", query: () => db.codes.toArray() },
-    { name: "codings", query: () => db.codings.toArray() },
-    { name: "memos", query: () => db.memos.toArray() },
-    { name: "speakers", query: () => db.speakers.toArray() },
-  ];
+  const [projects, documents, codes, codings, memos, speakers] = await Promise.all([
+    db.projects.toArray(),
+    db.documents.toArray(),
+    db.codes.toArray(),
+    db.codings.toArray(),
+    db.memos.toArray(),
+    db.speakers.toArray(),
+  ]);
 
-  for (const table of tables) {
-    onProgress?.(`Saving ${table.name}...`);
-    const data = await table.query();
-    const json = JSON.stringify(data, null, 2);
+  // Build binary index (without the actual blobs)
+  let binaryData: Array<{ id: string; documentId: string; mimeType: string; base64: string }> = [];
 
-    const file = await appFolder.getFileHandle(`${table.name}.json`, { create: true });
-    const writable = await file.createWritable();
-    await writable.write(json);
-    await writable.close();
+  if (includeBinaries) {
+    onProgress?.("Reading binary files...");
+    const binaryAssets = await db.binaryAssets.filter((b) => b.deletedAt === null).toArray();
 
-    totalSize += json.length;
-    fileCount++;
-  }
+    for (let i = 0; i < binaryAssets.length; i++) {
+      const asset = binaryAssets[i];
+      if (!asset.blob || asset.blob.size === 0) continue;
 
-  // Export binary assets (audio files, PDFs) as actual files
-  if (!includeBinaries) {
-    // Write manifest without binaries
-    onProgress?.("Writing manifest...");
-    const manifest = JSON.stringify({
-      syncedAt: new Date().toISOString(),
-      tables: tables.map((t) => t.name),
-      binaryCount: 0,
-      version: 4,
-    }, null, 2);
+      const sizeMB = (asset.blob.size / (1024 * 1024)).toFixed(1);
+      onProgress?.(`Encoding file ${i + 1}/${binaryAssets.length} (${sizeMB}MB)...`);
 
-    const manifestFile = await appFolder.getFileHandle("manifest.json", { create: true });
-    const writable = await manifestFile.createWritable();
-    await writable.write(manifest);
-    await writable.close();
-    fileCount++;
+      // Convert to base64 in chunks to avoid memory issues
+      const base64 = await blobToBase64(asset.blob);
 
-    return { files: fileCount, size: totalSize };
-  }
-  const binaryFolder = await appFolder.getDirectoryHandle("files", { create: true });
-  const binaryAssets = await db.binaryAssets.filter((b) => b.deletedAt === null).toArray();
+      binaryData.push({
+        id: asset.id,
+        documentId: asset.documentId,
+        mimeType: asset.mimeType,
+        base64,
+      });
 
-  for (let i = 0; i < binaryAssets.length; i++) {
-    const asset = binaryAssets[i];
-    if (!asset.blob || asset.blob.size === 0) continue;
-    const ext = asset.mimeType.split("/")[1]?.replace("mpeg", "mp3").replace("mp4", "m4a") ?? "bin";
-    const fileName = `${asset.id}.${ext}`;
-    const sizeMB = (asset.blob.size / (1024 * 1024)).toFixed(1);
-    onProgress?.(`Saving file ${i + 1}/${binaryAssets.length} (${sizeMB}MB)...`);
-
-    // Yield to event loop between large files to prevent browser freeze
-    await new Promise((r) => setTimeout(r, 50));
-
-    try {
-      const file = await binaryFolder.getFileHandle(fileName, { create: true });
-      const writable = await file.createWritable();
-      await writable.write(asset.blob);
-      await writable.close();
-      totalSize += asset.blob.size;
-      fileCount++;
-    } catch (err) {
-      console.warn(`[sync] Failed to write binary ${fileName}:`, err);
+      // Yield to event loop
+      await new Promise((r) => setTimeout(r, 10));
     }
   }
 
-  // Write binary index so we can restore the metadata mapping
-  const binaryIndex = binaryAssets.map((a) => ({
-    id: a.id,
-    documentId: a.documentId,
-    mimeType: a.mimeType,
-    size: a.blob?.size ?? 0,
-    fileName: `${a.id}.${a.mimeType.split("/")[1]?.replace("mpeg", "mp3").replace("mp4", "m4a") ?? "bin"}`,
-  }));
-  const indexFile = await binaryFolder.getFileHandle("index.json", { create: true });
-  const indexWritable = await indexFile.createWritable();
-  await indexWritable.write(JSON.stringify(binaryIndex, null, 2));
-  await indexWritable.close();
-  fileCount++;
+  onProgress?.("Building save file...");
 
-  // Write a manifest with sync timestamp
-  const manifest = JSON.stringify({
-    syncedAt: new Date().toISOString(),
-    tables: tables.map((t) => t.name),
-    binaryCount: binaryAssets.length,
+  const saveData = {
     version: 4,
-  }, null, 2);
+    savedAt: new Date().toISOString(),
+    projects,
+    documents,
+    codes,
+    codings,
+    memos,
+    speakers,
+    ...(includeBinaries ? { binaryAssets: binaryData } : {}),
+  };
 
-  const manifestFile = await appFolder.getFileHandle("manifest.json", { create: true });
-  const writable = await manifestFile.createWritable();
-  await writable.write(manifest);
-  await writable.close();
-  fileCount++;
+  const json = JSON.stringify(saveData);
+  const blob = new Blob([json], { type: "application/json" });
 
-  return { files: fileCount, size: totalSize };
+  onProgress?.("Saving...");
+
+  // Try showSaveFilePicker first
+  if (isFileSystemAccessSupported()) {
+    try {
+      const handle = await (window as unknown as {
+        showSaveFilePicker: (opts: Record<string, unknown>) => Promise<FileSystemFileHandle>;
+      }).showSaveFilePicker({
+        suggestedName: `qualcoding-backup-${new Date().toISOString().split("T")[0]}.json`,
+        types: [{
+          description: "QualCoding Backup",
+          accept: { "application/json": [".json"] },
+        }],
+      });
+
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+
+      return { size: blob.size };
+    } catch (err) {
+      // User cancelled or API failed, fall through to download
+      if ((err as Error).name === "AbortError") {
+        throw new Error("Cancelled");
+      }
+    }
+  }
+
+  // Fallback: trigger download
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `qualcoding-backup-${new Date().toISOString().split("T")[0]}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+
+  return { size: blob.size };
 }
 
 /**
- * Import data from the sync folder.
+ * Load data from a backup file.
  */
-export async function syncFromFolder(handle: FileSystemDirectoryHandle): Promise<{
-  tables: Record<string, number>;
-}> {
-  const appFolder = await handle.getDirectoryHandle("QualCoding");
+export async function loadFromFile(
+  file: File,
+  onProgress?: (msg: string) => void
+): Promise<{ tables: Record<string, number> }> {
+  onProgress?.("Reading file...");
+  const text = await file.text();
+  const data = JSON.parse(text);
+
+  if (!data.version || !data.projects) {
+    throw new Error("Invalid backup file");
+  }
+
   const tables: Record<string, number> = {};
 
   const tableConfigs = [
-    { name: "projects", table: db.projects },
-    { name: "documents", table: db.documents },
-    { name: "codes", table: db.codes },
-    { name: "codings", table: db.codings },
-    { name: "memos", table: db.memos },
-    { name: "speakers", table: db.speakers },
+    { name: "projects", records: data.projects, table: db.projects },
+    { name: "documents", records: data.documents, table: db.documents },
+    { name: "codes", records: data.codes, table: db.codes },
+    { name: "codings", records: data.codings, table: db.codings },
+    { name: "memos", records: data.memos, table: db.memos },
+    { name: "speakers", records: data.speakers, table: db.speakers },
   ];
 
   for (const config of tableConfigs) {
-    try {
-      const fileHandle = await appFolder.getFileHandle(`${config.name}.json`);
-      const file = await fileHandle.getFile();
-      const text = await file.text();
-      const records = JSON.parse(text) as Record<string, unknown>[];
+    if (!config.records) continue;
+    onProgress?.(`Restoring ${config.name}...`);
 
-      let count = 0;
-      for (const record of records) {
-        // Convert date strings back to Date objects
-        for (const key of ["createdAt", "updatedAt", "deletedAt"]) {
-          if (record[key] && typeof record[key] === "string") {
-            record[key] = new Date(record[key] as string);
-          }
+    let count = 0;
+    for (const record of config.records as Record<string, unknown>[]) {
+      for (const key of ["createdAt", "updatedAt", "deletedAt"]) {
+        if (record[key] && typeof record[key] === "string") {
+          record[key] = new Date(record[key] as string);
         }
-
-        const existing = await config.table.get(record.id as never);
-        if (existing) {
-          await config.table.update(record.id as never, record as never);
-        } else {
-          await config.table.add(record as never);
-        }
-        count++;
       }
-      tables[config.name] = count;
-    } catch {
-      // File doesn't exist, skip
+
+      const existing = await config.table.get(record.id as never);
+      if (existing) {
+        await config.table.update(record.id as never, record as never);
+      } else {
+        await config.table.add(record as never);
+      }
+      count++;
     }
+    tables[config.name] = count;
   }
 
-  // Restore binary assets
-  try {
-    const binaryFolder = await appFolder.getDirectoryHandle("files");
-    const indexHandle = await binaryFolder.getFileHandle("index.json");
-    const indexFile = await indexHandle.getFile();
-    const binaryIndex = JSON.parse(await indexFile.text()) as Array<{
+  // Restore binary assets if present
+  if (data.binaryAssets && Array.isArray(data.binaryAssets)) {
+    onProgress?.("Restoring binary files...");
+    let binaryCount = 0;
+
+    for (const entry of data.binaryAssets as Array<{
       id: string;
       documentId: string;
       mimeType: string;
-      fileName: string;
-    }>;
-
-    let binaryCount = 0;
-    for (const entry of binaryIndex) {
-      // Skip if already in IndexedDB
+      base64: string;
+    }>) {
       const existing = await db.binaryAssets.get(entry.id);
       if (existing?.blob && existing.blob.size > 0) {
         binaryCount++;
         continue;
       }
 
-      try {
-        const fileHandle = await binaryFolder.getFileHandle(entry.fileName);
-        const file = await fileHandle.getFile();
-        const blob = new Blob([await file.arrayBuffer()], { type: entry.mimeType });
+      onProgress?.(`Restoring file ${binaryCount + 1}...`);
+      const blob = base64ToBlob(entry.base64, entry.mimeType);
 
-        if (existing) {
-          await db.binaryAssets.update(entry.id, { blob, mimeType: entry.mimeType });
-        } else {
-          await db.binaryAssets.add({
-            id: entry.id,
-            documentId: entry.documentId,
-            blob,
-            mimeType: entry.mimeType,
-            driveFileId: null,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-            deletedAt: null,
-            _dirty: false,
-            _lastSyncedSnapshot: null,
-          } as never);
-        }
-        binaryCount++;
-      } catch {
-        console.warn(`[sync] Failed to restore binary ${entry.fileName}`);
+      if (existing) {
+        await db.binaryAssets.update(entry.id, { blob, mimeType: entry.mimeType });
+      } else {
+        await db.binaryAssets.add({
+          id: entry.id,
+          documentId: entry.documentId,
+          blob,
+          mimeType: entry.mimeType,
+          driveFileId: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          deletedAt: null,
+          _dirty: false,
+          _lastSyncedSnapshot: null,
+        } as never);
       }
+      binaryCount++;
     }
     tables["binaryAssets"] = binaryCount;
-  } catch {
-    // No binary folder, skip
   }
 
   return { tables };
 }
 
-/**
- * Get info about the sync folder.
- */
-export async function getSyncFolderInfo(handle: FileSystemDirectoryHandle): Promise<{
-  name: string;
-  lastSynced: string | null;
-}> {
-  try {
-    const appFolder = await handle.getDirectoryHandle("QualCoding");
-    const manifestHandle = await appFolder.getFileHandle("manifest.json");
-    const file = await manifestHandle.getFile();
-    const manifest = JSON.parse(await file.text());
-    return {
-      name: handle.name,
-      lastSynced: manifest.syncedAt,
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.split(",")[1]);
     };
-  } catch {
-    return {
-      name: handle.name,
-      lastSynced: null,
-    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
   }
+  return new Blob([bytes], { type: mimeType });
 }

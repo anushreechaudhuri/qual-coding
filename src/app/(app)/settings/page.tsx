@@ -4,15 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { ApiKeyForm } from "@/components/settings/ApiKeyForm";
 import { exportFullBackup, importFullBackup } from "@/lib/export/backup";
-import {
-  isFileSystemAccessSupported,
-  pickSyncFolder,
-  getSavedFolderHandle,
-  clearSyncFolder,
-  syncToFolder,
-  syncFromFolder,
-  getSyncFolderInfo,
-} from "@/lib/sync/localFolderSync";
+import { saveToFile, loadFromFile } from "@/lib/sync/localFolderSync";
 
 export default function SettingsPage() {
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
@@ -127,56 +119,39 @@ export default function SettingsPage() {
 }
 
 function FolderSyncSection() {
-  const [folderHandle, setFolderHandle] = useState<FileSystemDirectoryHandle | null>(null);
-  const [folderInfo, setFolderInfo] = useState<{ name: string; lastSynced: string | null } | null>(null);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
   const [includeBinaries, setIncludeBinaries] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [supported] = useState(() => isFileSystemAccessSupported());
+  const restoreRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    getSavedFolderHandle().then((h) => {
-      if (h) {
-        setFolderHandle(h);
-        getSyncFolderInfo(h).then(setFolderInfo);
-      }
-    });
-  }, []);
-
-  async function handlePickFolder() {
-    const handle = await pickSyncFolder();
-    if (handle) {
-      setFolderHandle(handle);
-      const info = await getSyncFolderInfo(handle);
-      setFolderInfo(info);
-    }
-  }
-
-  async function handleSyncTo() {
-    if (!folderHandle) return;
+  async function handleSave() {
     setSyncing(true);
-    setSyncStatus("Starting sync...");
+    setSyncStatus("Starting...");
     try {
-      const result = await syncToFolder(folderHandle, {
+      const result = await saveToFile({
         includeBinaries,
         onProgress: (msg) => setSyncStatus(msg),
       });
       const sizeMB = (result.size / (1024 * 1024)).toFixed(1);
-      setSyncStatus(`Saved ${result.files} files (${sizeMB}MB) to ${folderInfo?.name ?? "folder"}`);
-      setFolderInfo(await getSyncFolderInfo(folderHandle));
-      setTimeout(() => setSyncStatus(null), 5000);
+      setSyncStatus(`Saved (${sizeMB}MB). Save to a cloud drive folder for automatic backup.`);
+      setTimeout(() => setSyncStatus(null), 8000);
     } catch (err) {
-      setSyncStatus(`Sync failed: ${err instanceof Error ? err.message : "unknown error"}`);
+      const msg = err instanceof Error ? err.message : "unknown error";
+      if (msg === "Cancelled") {
+        setSyncStatus(null);
+      } else {
+        setSyncStatus(`Save failed: ${msg}`);
+      }
     } finally {
       setSyncing(false);
     }
   }
 
-  async function handleSyncFrom() {
-    if (!folderHandle) return;
-    setSyncStatus("Restoring from folder...");
+  async function handleRestore(file: File) {
+    setSyncing(true);
+    setSyncStatus("Restoring...");
     try {
-      const result = await syncFromFolder(folderHandle);
+      const result = await loadFromFile(file, (msg) => setSyncStatus(msg));
       const summary = Object.entries(result.tables)
         .map(([k, v]) => `${v} ${k}`)
         .join(", ");
@@ -184,93 +159,58 @@ function FolderSyncSection() {
       setTimeout(() => setSyncStatus(null), 5000);
     } catch (err) {
       setSyncStatus(`Restore failed: ${err instanceof Error ? err.message : "unknown error"}`);
+    } finally {
+      setSyncing(false);
     }
-  }
-
-  async function handleDisconnect() {
-    await clearSyncFolder();
-    setFolderHandle(null);
-    setFolderInfo(null);
-  }
-
-  if (!supported) {
-    return (
-      <section className="space-y-4 border-t border-stone-200 pt-8">
-        <div>
-          <h2 className="text-sm font-medium text-stone-900">Folder Sync</h2>
-          <p className="mt-1 text-xs text-stone-500">
-            Folder sync requires a Chromium-based browser (Chrome, Edge, Arc).
-            Use the backup/restore feature above instead.
-          </p>
-        </div>
-      </section>
-    );
   }
 
   return (
     <section className="space-y-4 border-t border-stone-200 pt-8">
       <div>
-        <h2 className="text-sm font-medium text-stone-900">Folder Sync</h2>
+        <h2 className="text-sm font-medium text-stone-900">Save &amp; Sync</h2>
         <p className="mt-1 text-xs text-stone-500">
-          Save your data to a local folder. Pick a folder inside Google Drive,
+          Save all your data to a file. Choose a location inside Google Drive,
           Dropbox, pCloud, or OneDrive and it syncs to the cloud automatically.
-          No API keys or OAuth needed.
+          Restore on any device by loading the file.
         </p>
       </div>
 
-      {folderHandle ? (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-100 px-3 py-2">
-            <span className="text-xs text-green-800 font-medium">
-              Connected: {folderInfo?.name ?? "folder"}/QualCoding
-            </span>
-            {folderInfo?.lastSynced && (
-              <span className="text-[10px] text-green-600">
-                Last synced: {new Date(folderInfo.lastSynced).toLocaleString()}
-              </span>
-            )}
-          </div>
+      <label className="flex items-center gap-2 text-xs text-stone-600">
+        <input
+          type="checkbox"
+          checked={includeBinaries}
+          onChange={(e) => setIncludeBinaries(e.target.checked)}
+          className="rounded border-stone-300"
+        />
+        Include audio/PDF files (large, may take a while)
+      </label>
 
-          <label className="flex items-center gap-2 text-xs text-stone-600">
-            <input
-              type="checkbox"
-              checked={includeBinaries}
-              onChange={(e) => setIncludeBinaries(e.target.checked)}
-              className="rounded border-stone-300"
-            />
-            Include audio/PDF files (large, may take a while)
-          </label>
-
-          <div className="flex gap-2">
-            <button
-              onClick={handleSyncTo}
-              disabled={syncing}
-              className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-50"
-            >
-              {syncing ? "Syncing..." : "Save to folder"}
-            </button>
-            <button
-              onClick={handleSyncFrom}
-              className="rounded-md border border-stone-200 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50"
-            >
-              Restore from folder
-            </button>
-            <button
-              onClick={handleDisconnect}
-              className="rounded-md border border-stone-200 px-4 py-2 text-sm text-stone-500 hover:bg-stone-50"
-            >
-              Disconnect
-            </button>
-          </div>
-        </div>
-      ) : (
+      <div className="flex gap-2">
         <button
-          onClick={handlePickFolder}
-          className="rounded-md border border-stone-200 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50"
+          onClick={handleSave}
+          disabled={syncing}
+          className="rounded-md bg-stone-900 px-4 py-2 text-sm font-medium text-white hover:bg-stone-800 disabled:opacity-50"
         >
-          Choose sync folder
+          {syncing ? "Working..." : "Save to file"}
         </button>
-      )}
+        <button
+          onClick={() => restoreRef.current?.click()}
+          disabled={syncing}
+          className="rounded-md border border-stone-200 px-4 py-2 text-sm text-stone-700 hover:bg-stone-50 disabled:opacity-50"
+        >
+          Restore from file
+        </button>
+        <input
+          ref={restoreRef}
+          type="file"
+          accept=".json"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleRestore(file);
+          }}
+        />
+      </div>
 
       {syncStatus && (
         <p className={`text-xs ${syncStatus.includes("failed") ? "text-red-600" : "text-green-600"}`}>
@@ -279,8 +219,10 @@ function FolderSyncSection() {
       )}
 
       <p className="text-[10px] text-stone-400">
-        Tip: Pick a folder inside your cloud drive (e.g., Google Drive, Dropbox, pCloud).
-        Your data syncs to the cloud automatically when the desktop app is running.
+        Tip: In Chrome/Edge, "Save to file" lets you pick the save location.
+        Choose a folder inside your cloud drive for automatic backup. The file
+        contains all projects, codes, transcripts, and memos
+        {includeBinaries ? " plus audio/PDF files" : ""}.
       </p>
     </section>
   );
