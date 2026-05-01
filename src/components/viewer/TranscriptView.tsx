@@ -3,13 +3,13 @@
 import { useState, useRef, useCallback } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { db } from "@/lib/db/schema";
-import type { Document, Code } from "@/types";
+import { deleteCoding } from "@/lib/db/operations";
+import type { Document, Code, Coding } from "@/types";
 import { TextAnnotator } from "@/components/editor/TextAnnotator";
 import { CopyDropdown } from "./CopyDropdown";
 import { useCodebook } from "@/hooks/useCodebook";
 import { useCodingActions } from "@/hooks/useCodingActions";
 import { CodePicker } from "@/components/editor/CodePicker";
-import { HighlightLayer } from "@/components/editor/HighlightLayer";
 
 type ViewMode = "original" | "translation" | "side-by-side";
 
@@ -80,6 +80,11 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
   const codes = useCodebook(doc.projectId);
   const { applyCoding } = useCodingActions(doc);
   const [recentCodeIds, setRecentCodeIds] = useState<string[]>([]);
+  const [tooltip, setTooltip] = useState<{
+    codings: Coding[];
+    position: { x: number; y: number };
+  } | null>(null);
+
   const [picker, setPicker] = useState<{
     position: { x: number; y: number };
     segmentIndex: number;
@@ -237,6 +242,10 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
                   segmentOffset={segmentOffsets.original[i]}
                   codings={originalCodings ?? []}
                   codeMap={codeMap}
+                  onCodingClick={(c, e) => setTooltip({
+                    codings: c,
+                    position: { x: (e.target as HTMLElement).getBoundingClientRect().left, y: (e.target as HTMLElement).getBoundingClientRect().bottom + 4 },
+                  })}
                 />
               </p>
             </div>
@@ -254,12 +263,58 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
                   segmentOffset={segmentOffsets.translation[i]}
                   codings={translationCodings ?? []}
                   codeMap={codeMap}
+                  onCodingClick={(c, e) => setTooltip({
+                    codings: c,
+                    position: { x: (e.target as HTMLElement).getBoundingClientRect().left, y: (e.target as HTMLElement).getBoundingClientRect().bottom + 4 },
+                  })}
                 />
               </p>
             </div>
           </div>
         ))}
       </div>
+
+      {/* Coding tooltip (click to edit/delete) */}
+      {tooltip && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setTooltip(null)} />
+          <div
+            className="fixed z-50 w-52 rounded-md border border-stone-200 bg-white p-2 shadow-lg"
+            style={{ left: Math.min(tooltip.position.x, window.innerWidth - 220), top: tooltip.position.y }}
+          >
+            <div className="text-[10px] text-stone-400 mb-1">
+              Applied codes ({tooltip.codings.length}):
+            </div>
+            <div className="space-y-1">
+              {tooltip.codings.map((c) => {
+                const code = codeMap.get(c.codeId);
+                return (
+                  <div key={c.id} className="flex items-center justify-between rounded px-1.5 py-1 hover:bg-stone-50">
+                    <div className="flex items-center gap-1.5">
+                      <span className="h-2 w-2 rounded-sm" style={{ backgroundColor: code?.color ?? "#78716c" }} />
+                      <span className="text-xs text-stone-700">{code?.name ?? "Unknown"}</span>
+                    </div>
+                    <button
+                      onClick={async () => {
+                        await deleteCoding(c.id);
+                        setTooltip(null);
+                      }}
+                      className="text-[10px] text-stone-400 hover:text-red-500"
+                    >
+                      remove
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-1.5 pt-1.5 border-t border-stone-100">
+              <p className="text-[10px] text-stone-400 line-clamp-2">
+                &ldquo;{tooltip.codings[0]?.quotedText}&rdquo;
+              </p>
+            </div>
+          </div>
+        </>
+      )}
 
       {picker && codes.length > 0 && (
         <CodePicker
@@ -283,11 +338,13 @@ function HighlightedSegmentText({
   segmentOffset,
   codings,
   codeMap,
+  onCodingClick,
 }: {
   text: string;
   segmentOffset: { start: number; end: number } | undefined;
-  codings: { startOffset: number; endOffset: number; codeId: string }[];
+  codings: Coding[];
   codeMap: Map<string, Code>;
+  onCodingClick?: (codings: Coding[], event: React.MouseEvent) => void;
 }) {
   if (!text || !segmentOffset) return <>{text}</>;
 
@@ -326,12 +383,20 @@ function HighlightedSegmentText({
     if (appliedCoding) {
       const code = codeMap.get(appliedCoding.codeId);
       const color = code?.color ?? "#78716c";
+      // Find ALL codings at this position
+      const allAtPos = overlapping.filter(
+        (c) => c.startOffset - textStart < end && c.endOffset - textStart > start
+      );
       spans.push(
         <span
           key={i}
-          className="rounded-sm"
+          className="rounded-sm cursor-pointer"
           style={{ backgroundColor: `${color}30`, borderBottom: `2px solid ${color}` }}
-          title={code?.name}
+          title={`${code?.name}${allAtPos.length > 1 ? ` (+${allAtPos.length - 1} more)` : ""} — click to edit`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onCodingClick?.(allAtPos as Coding[], e);
+          }}
         >
           {sliceText}
         </span>
