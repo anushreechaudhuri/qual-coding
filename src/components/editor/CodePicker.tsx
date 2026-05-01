@@ -147,10 +147,9 @@ export function CodePicker({
         style={{ left: position.x, top: position.y }}
       >
         <input
-          autoFocus
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search codes..."
+          placeholder="Type to search codes..."
           className="w-full border-b border-stone-100 px-3 py-1.5 text-xs focus:outline-none"
           onKeyDown={handleKeyDown}
         />

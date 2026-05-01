@@ -57,7 +57,11 @@ export function AudioPlayer({
     wavesurferRef.current = ws;
 
     return () => {
-      ws.destroy();
+      try {
+        ws.destroy();
+      } catch {
+        // wavesurfer may already be destroyed or aborted
+      }
       wavesurferRef.current = null;
     };
   }, [blobUrl, onTimeUpdate]);

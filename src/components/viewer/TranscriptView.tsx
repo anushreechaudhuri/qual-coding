@@ -251,24 +251,6 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
         ))}
       </div>
 
-      {/* Floating yellow highlight overlay */}
-      {picker && picker.highlightRects.length > 0 && (
-        picker.highlightRects.map((rect, i) => (
-          <div
-            key={i}
-            className="fixed pointer-events-none rounded-sm"
-            style={{
-              left: rect.left,
-              top: rect.top,
-              width: rect.width,
-              height: rect.height,
-              backgroundColor: "rgba(253, 230, 138, 0.6)",
-              zIndex: 30,
-            }}
-          />
-        ))
-      )}
-
       {picker && codes.length > 0 && (
         <CodePicker
           codes={codes}
