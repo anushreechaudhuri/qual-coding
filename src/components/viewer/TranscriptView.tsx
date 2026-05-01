@@ -232,7 +232,12 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
                 data-content-container
                 className="font-serif text-stone-900 leading-relaxed whitespace-pre-wrap text-sm"
               >
-                {seg.content}
+                <HighlightedSegmentText
+                  text={seg.content}
+                  segmentOffset={segmentOffsets.original[i]}
+                  codings={originalCodings ?? []}
+                  codeMap={codeMap}
+                />
               </p>
             </div>
             <div
@@ -244,7 +249,12 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
                 data-content-container
                 className="font-serif text-stone-600 leading-relaxed whitespace-pre-wrap text-sm italic mt-5"
               >
-                {seg.translation && seg.translation !== seg.content ? seg.translation : ""}
+                <HighlightedSegmentText
+                  text={seg.translation && seg.translation !== seg.content ? seg.translation : ""}
+                  segmentOffset={segmentOffsets.translation[i]}
+                  codings={translationCodings ?? []}
+                  codeMap={codeMap}
+                />
               </p>
             </div>
           </div>
@@ -262,5 +272,75 @@ function AlignedSideBySide({ document: doc }: { document: Document }) {
       )}
     </div>
   );
+}
+
+/**
+ * Renders segment text with colored highlights for applied codings.
+ * Maps global content offsets to local segment text positions.
+ */
+function HighlightedSegmentText({
+  text,
+  segmentOffset,
+  codings,
+  codeMap,
+}: {
+  text: string;
+  segmentOffset: { start: number; end: number } | undefined;
+  codings: { startOffset: number; endOffset: number; codeId: string }[];
+  codeMap: Map<string, Code>;
+}) {
+  if (!text || !segmentOffset) return <>{text}</>;
+
+  // Find codings that overlap with this segment's range in the full content
+  const headerLen = text.length < segmentOffset.end - segmentOffset.start
+    ? segmentOffset.end - segmentOffset.start - text.length
+    : 0;
+  const textStart = segmentOffset.start + headerLen;
+  const textEnd = textStart + text.length;
+
+  const overlapping = codings.filter(
+    (c) => c.startOffset < textEnd && c.endOffset > textStart
+  );
+
+  if (overlapping.length === 0) return <>{text}</>;
+
+  // Build highlighted spans
+  const boundaries = new Set<number>([0, text.length]);
+  for (const c of overlapping) {
+    boundaries.add(Math.max(0, c.startOffset - textStart));
+    boundaries.add(Math.min(text.length, c.endOffset - textStart));
+  }
+
+  const sorted = Array.from(boundaries).sort((a, b) => a - b);
+  const spans: React.ReactNode[] = [];
+
+  for (let i = 0; i < sorted.length - 1; i++) {
+    const start = sorted[i];
+    const end = sorted[i + 1];
+    const sliceText = text.slice(start, end);
+
+    const appliedCoding = overlapping.find(
+      (c) => c.startOffset - textStart < end && c.endOffset - textStart > start
+    );
+
+    if (appliedCoding) {
+      const code = codeMap.get(appliedCoding.codeId);
+      const color = code?.color ?? "#78716c";
+      spans.push(
+        <span
+          key={i}
+          className="rounded-sm"
+          style={{ backgroundColor: `${color}30`, borderBottom: `2px solid ${color}` }}
+          title={code?.name}
+        >
+          {sliceText}
+        </span>
+      );
+    } else {
+      spans.push(<span key={i}>{sliceText}</span>);
+    }
+  }
+
+  return <>{spans}</>;
 }
 

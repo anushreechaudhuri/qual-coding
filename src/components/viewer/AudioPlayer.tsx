@@ -26,42 +26,40 @@ export function AudioPlayer({
   useEffect(() => {
     if (!containerRef.current || !blobUrl) return;
 
-    const ws = WaveSurfer.create({
-      container: containerRef.current,
-      waveColor: "#d6d3d1",
-      progressColor: "#78716c",
-      cursorColor: "#1c1917",
-      barWidth: 2,
-      barGap: 1,
-      barRadius: 2,
-      height: 48,
-      normalize: true,
-    });
+    let ws: WaveSurfer;
+    try {
+      ws = WaveSurfer.create({
+        container: containerRef.current,
+        waveColor: "#d6d3d1",
+        progressColor: "#78716c",
+        cursorColor: "#1c1917",
+        barWidth: 2,
+        barGap: 1,
+        barRadius: 2,
+        height: 48,
+        normalize: true,
+      });
 
-    ws.load(blobUrl);
+      ws.load(blobUrl);
 
-    ws.on("ready", () => {
-      setDuration(ws.getDuration());
-    });
+      ws.on("ready", () => setDuration(ws.getDuration()));
+      ws.on("audioprocess", () => {
+        const time = ws.getCurrentTime();
+        setCurrentTime(time);
+        onTimeUpdate(time);
+      });
+      ws.on("play", () => setIsPlaying(true));
+      ws.on("pause", () => setIsPlaying(false));
+      ws.on("finish", () => setIsPlaying(false));
+      ws.on("error", () => {}); // Suppress abort errors
 
-    ws.on("audioprocess", () => {
-      const time = ws.getCurrentTime();
-      setCurrentTime(time);
-      onTimeUpdate(time);
-    });
-
-    ws.on("play", () => setIsPlaying(true));
-    ws.on("pause", () => setIsPlaying(false));
-    ws.on("finish", () => setIsPlaying(false));
-
-    wavesurferRef.current = ws;
+      wavesurferRef.current = ws;
+    } catch {
+      return;
+    }
 
     return () => {
-      try {
-        ws.destroy();
-      } catch {
-        // wavesurfer may already be destroyed or aborted
-      }
+      try { ws.destroy(); } catch { /* already destroyed */ }
       wavesurferRef.current = null;
     };
   }, [blobUrl, onTimeUpdate]);
