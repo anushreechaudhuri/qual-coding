@@ -14,7 +14,7 @@ import { getBinaryAsset, updateDocument, ensureSpeakersFromSegments } from "@/li
 import { isApiError } from "@/types/api";
 import type { AudioSegment } from "@/types";
 
-const CHUNK_MINUTES = 5;
+const CHUNK_MINUTES = 10;
 const DIRECT_UPLOAD_THRESHOLD_MB = 20;
 
 /**

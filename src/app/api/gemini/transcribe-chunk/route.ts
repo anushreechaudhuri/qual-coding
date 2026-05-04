@@ -1,9 +1,9 @@
 /**
  * Chunked transcription: transcribe a specific time window of an audio file.
  *
- * The client calls this multiple times with different startMin/endMin values,
- * building the transcript progressively. After the first chunk, known speakers
- * are passed to maintain consistency.
+ * Uses gemini-2.5-flash (full thinking model) for best quality.
+ * Does NOT force a response schema — asks for JSON in the prompt instead,
+ * which produces much better speaker identification and segment grouping.
  */
 
 import { NextRequest, NextResponse } from "next/server";
@@ -11,27 +11,6 @@ import { TranscriptionResponseSchema } from "@/types/gemini";
 import type { ApiErrorResponse } from "@/types/api";
 
 export const maxDuration = 300;
-
-const RESPONSE_SCHEMA = {
-  type: "OBJECT",
-  properties: {
-    segments: {
-      type: "ARRAY",
-      items: {
-        type: "OBJECT",
-        properties: {
-          speaker: { type: "STRING" },
-          timestamp: { type: "STRING" },
-          content: { type: "STRING" },
-          language: { type: "STRING" },
-          translation: { type: "STRING" },
-        },
-        required: ["speaker", "timestamp", "content", "language", "translation"],
-      },
-    },
-  },
-  required: ["segments"],
-};
 
 export async function POST(req: NextRequest) {
   const apiKey = req.headers.get("x-gemini-key");
@@ -54,22 +33,25 @@ export async function POST(req: NextRequest) {
     }
 
     const speakerContext = knownSpeakers?.length
-      ? `\n\nSpeakers identified so far: ${knownSpeakers.join(", ")}. Use the SAME labels for the same voices.`
+      ? `\nSpeakers identified in previous chunks: ${knownSpeakers.join(", ")}. Use the SAME labels for the same voices. Distinguish carefully between different speakers.`
       : "";
 
-    const prompt = `Transcribe ONLY the portion of this audio from ${startMin}:00 to ${endMin}:00 (minutes:seconds).
+    const prompt = `Transcribe ONLY the audio from ${startMin}:00 to ${endMin}:00.
 
-Requirements:
-1. Group text by SPEAKER TURNS, not individual sentences. Each segment should be one full speaker turn (everything one person says before the next person speaks). Do NOT split a single speaker's continuous speech into multiple segments.
-2. Label each speaker by role when possible (Interviewer, Farmer 1, Farmer 2, Translator, etc.). Distinguish between different speakers carefully.
+This is a qualitative research recording (focus group discussion or interview) conducted primarily in ${language}. Accuracy is critical for research analysis.
+
+Rules:
+1. Group by SPEAKER TURNS. Each segment = everything one person says before the next person speaks. Do NOT split one speaker's continuous speech into tiny fragments.
+2. Identify speakers by name or role (e.g., Tasin, Anushree, Farmer 1, Farmer 2, Translator). Listen carefully to distinguish different voices.
 3. Timestamps in MM:SS format matching the actual recording position.
-4. Transcribe in the original language exactly as spoken, preserving code-switching.
-5. For EACH segment, provide a complete English translation that matches the full original content. The translation should cover the same text as the original, not summarize it.
-6. Detect the language of each segment.${speakerContext}
+4. Transcribe in the ORIGINAL language exactly as spoken. Preserve code-switching between languages.
+5. For each segment, provide a COMPLETE English translation — full translation, not a summary.
+6. Language code for each segment (bn, en, hi, id, etc.).${speakerContext}
 
-IMPORTANT: Each segment's "content" and "translation" must correspond to the same speech. Do not fragment into many tiny segments. One segment per speaker turn.
+Return valid JSON with this exact structure:
+{"segments": [{"speaker": "Name", "timestamp": "MM:SS", "content": "original language text", "language": "bn", "translation": "English translation"}]}
 
-The primary language is ${language}. Be thorough and accurate. These are research recordings.`;
+IMPORTANT: Quality over quantity. Fewer long segments grouped by speaker turns are much better than many tiny fragments.`;
 
     const requestBody = {
       contents: [{
@@ -80,21 +62,18 @@ The primary language is ${language}. Be thorough and accurate. These are researc
       }],
       generationConfig: {
         responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
       },
     };
 
-    console.log(`[gemini/chunk] Transcribing ${startMin}:00-${endMin}:00...`);
+    console.log(`[gemini/chunk] Transcribing ${startMin}:00-${endMin}:00 with gemini-2.5-flash...`);
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 300_000);
+    const timeout = setTimeout(() => controller.abort(), 600_000);
 
-    // Use streamGenerateContent for faster first-byte response and to
-    // avoid connection timeouts on long chunks
     let geminiRes: Response;
     try {
       geminiRes = await fetch(
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse&key=${apiKey}`,
+        `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse&key=${apiKey}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -123,7 +102,7 @@ The primary language is ${language}. Be thorough and accurate. These are researc
       );
     }
 
-    // Parse SSE stream: collect all text parts from streamed chunks
+    // Parse SSE stream: collect all text parts
     const sseText = await geminiRes.text();
     let responseText = "";
 
@@ -149,30 +128,42 @@ The primary language is ${language}. Be thorough and accurate. These are researc
       );
     }
 
+    // Parse the JSON response (not schema-enforced, so may need cleanup)
     let parsed: unknown;
     try {
+      // Try direct parse first
       parsed = JSON.parse(responseText);
     } catch {
-      // Try recovery
-      const lastTranslation = responseText.lastIndexOf('"translation"');
-      if (lastTranslation > 0) {
-        let braceDepth = 0;
-        for (let i = lastTranslation; i < responseText.length; i++) {
-          if (responseText[i] === "{") braceDepth++;
-          if (responseText[i] === "}") {
-            braceDepth--;
-            if (braceDepth <= 0) {
-              try {
-                parsed = JSON.parse(responseText.slice(0, i + 1) + "]}");
-                break;
-              } catch { /* continue */ }
+      // Try extracting JSON from markdown code blocks
+      const jsonMatch = responseText.match(/```json?\s*([\s\S]*?)```/);
+      if (jsonMatch) {
+        try { parsed = JSON.parse(jsonMatch[1]); } catch { /* fall through */ }
+      }
+
+      // Try recovery: find last complete segment
+      if (!parsed) {
+        const lastTranslation = responseText.lastIndexOf('"translation"');
+        if (lastTranslation > 0) {
+          let braceDepth = 0;
+          for (let i = lastTranslation; i < responseText.length; i++) {
+            if (responseText[i] === "{") braceDepth++;
+            if (responseText[i] === "}") {
+              braceDepth--;
+              if (braceDepth <= 0) {
+                try {
+                  parsed = JSON.parse(responseText.slice(0, i + 1) + "]}");
+                  break;
+                } catch { /* continue */ }
+              }
             }
           }
         }
       }
+
       if (!parsed) {
+        console.error("[gemini/chunk] JSON parse failed, text:", responseText.slice(0, 300));
         return NextResponse.json(
-          { error: "Malformed JSON in chunk response", code: "validation", retryable: true } satisfies ApiErrorResponse,
+          { error: "Malformed JSON in response", code: "validation", retryable: true } satisfies ApiErrorResponse,
           { status: 502 }
         );
       }
@@ -180,6 +171,7 @@ The primary language is ${language}. Be thorough and accurate. These are researc
 
     const validated = TranscriptionResponseSchema.safeParse(parsed);
     if (!validated.success) {
+      console.error("[gemini/chunk] Schema validation failed:", validated.error.message);
       return NextResponse.json(
         { error: "Response format mismatch", code: "validation", retryable: true } satisfies ApiErrorResponse,
         { status: 502 }
