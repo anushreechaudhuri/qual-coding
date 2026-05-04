@@ -197,25 +197,24 @@ export async function processWithGemini(
     const uri = await uploadToGemini(asset.blob, asset.mimeType, apiKey);
     console.log("[gemini] Upload complete, URI:", uri);
 
-    // Step 2: Estimate duration and plan chunks
-    // m4a/aac: ~0.5MB/min, mp3: ~1MB/min, wav: ~10MB/min
-    // Use conservative estimate (longer duration) to avoid cutting short
-    const minPerMB = asset.mimeType.includes("wav") ? 0.1 : asset.mimeType.includes("mp3") || asset.mimeType.includes("mpeg") ? 1.0 : 2.5;
-    const estimatedDurationMin = Math.max(10, Math.round(fileSizeMB * minPerMB));
-    const chunkCount = Math.ceil(estimatedDurationMin / CHUNK_MINUTES);
-    console.log(`[gemini] Estimated ${estimatedDurationMin}min (${minPerMB}min/MB), processing in ${chunkCount} chunks`);
+    // Step 2: Process chunks sequentially until we hit the end of the audio.
+    // No duration estimation needed — we keep going until two consecutive
+    // chunks return no segments. Max 120 minutes safety limit.
+    const MAX_MINUTES = 120;
+    const maxChunks = Math.ceil(MAX_MINUTES / CHUNK_MINUTES);
 
-    // Step 3: Process chunks sequentially
     const allSegments: AudioSegment[] = [];
     let knownSpeakers: string[] = [];
     let globalSegmentIndex = 0;
     let consecutiveEmpty = 0;
 
-    for (let chunk = 0; chunk < chunkCount; chunk++) {
-      const startMin = chunk * CHUNK_MINUTES;
-      const endMin = Math.min((chunk + 1) * CHUNK_MINUTES, estimatedDurationMin + 5);
+    console.log(`[gemini] Processing in ${CHUNK_MINUTES}-min chunks (max ${maxChunks} chunks)`);
 
-      console.log(`[gemini] Chunk ${chunk + 1}/${chunkCount}: ${startMin}:00-${endMin}:00`);
+    for (let chunk = 0; chunk < maxChunks; chunk++) {
+      const startMin = chunk * CHUNK_MINUTES;
+      const endMin = (chunk + 1) * CHUNK_MINUTES;
+
+      console.log(`[gemini] Chunk ${chunk + 1}/${maxChunks}: ${startMin}:00-${endMin}:00`);
 
       const chunkRes = await fetch("/api/gemini/transcribe-chunk", {
         method: "POST",
@@ -239,7 +238,7 @@ export async function processWithGemini(
         console.error(`[gemini] Chunk ${chunk + 1} error:`, errMsg);
 
         // Skip this chunk and try the next one (don't stop entirely)
-        if (allSegments.length === 0 && chunk === chunkCount - 1) {
+        if (allSegments.length === 0 && chunk === maxChunks - 1) {
           throw new Error(errMsg);
         }
         continue;
