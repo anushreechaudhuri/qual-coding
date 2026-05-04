@@ -198,15 +198,18 @@ export async function processWithGemini(
     console.log("[gemini] Upload complete, URI:", uri);
 
     // Step 2: Estimate duration and plan chunks
-    // Rough: 1MB ≈ 1.5 min of audio at typical compression
-    const estimatedDurationMin = Math.max(5, Math.round(fileSizeMB * 1.5));
+    // m4a/aac: ~0.5MB/min, mp3: ~1MB/min, wav: ~10MB/min
+    // Use conservative estimate (longer duration) to avoid cutting short
+    const minPerMB = asset.mimeType.includes("wav") ? 0.1 : asset.mimeType.includes("mp3") || asset.mimeType.includes("mpeg") ? 1.0 : 2.5;
+    const estimatedDurationMin = Math.max(10, Math.round(fileSizeMB * minPerMB));
     const chunkCount = Math.ceil(estimatedDurationMin / CHUNK_MINUTES);
-    console.log(`[gemini] Estimated ${estimatedDurationMin}min, processing in ${chunkCount} chunks`);
+    console.log(`[gemini] Estimated ${estimatedDurationMin}min (${minPerMB}min/MB), processing in ${chunkCount} chunks`);
 
     // Step 3: Process chunks sequentially
     const allSegments: AudioSegment[] = [];
     let knownSpeakers: string[] = [];
     let globalSegmentIndex = 0;
+    let consecutiveEmpty = 0;
 
     for (let chunk = 0; chunk < chunkCount; chunk++) {
       const startMin = chunk * CHUNK_MINUTES;
@@ -235,12 +238,11 @@ export async function processWithGemini(
         const errMsg = errData && isApiError(errData) ? errData.error : `Chunk ${chunk + 1} failed`;
         console.error(`[gemini] Chunk ${chunk + 1} error:`, errMsg);
 
-        // If we already have some segments, save what we have
-        if (allSegments.length > 0) {
-          console.log(`[gemini] Saving ${allSegments.length} segments from completed chunks`);
-          break;
+        // Skip this chunk and try the next one (don't stop entirely)
+        if (allSegments.length === 0 && chunk === chunkCount - 1) {
+          throw new Error(errMsg);
         }
-        throw new Error(errMsg);
+        continue;
       }
 
       const result = await chunkRes.json();
@@ -298,10 +300,15 @@ export async function processWithGemini(
 
       console.log(`[gemini] Chunk ${chunk + 1} done: +${chunkSegments.length} segments (total: ${allSegments.length})`);
 
-      // If the chunk returned no segments, we've passed the end of the audio
       if (chunkSegments.length === 0) {
-        console.log("[gemini] No segments in chunk, audio ended");
-        break;
+        consecutiveEmpty++;
+        console.log(`[gemini] Empty chunk ${chunk + 1} (${consecutiveEmpty} consecutive)`);
+        if (consecutiveEmpty >= 2) {
+          console.log("[gemini] Two consecutive empty chunks, audio likely ended");
+          break;
+        }
+      } else {
+        consecutiveEmpty = 0;
       }
     }
 
